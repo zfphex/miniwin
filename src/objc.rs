@@ -62,3 +62,21 @@ pub unsafe fn nsstring(s: &str) -> id {
         init_func(allocated, init_sel, s.as_ptr() as *const c_void, s.len(), 4) // 4 is NSUTF8StringEncoding
     }
 }
+
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn msg_send_rect(obj: id, sel: SEL) -> NSRect {
+    unsafe {
+        let mut rect = std::mem::zeroed();
+        let func: unsafe extern "C" fn(*mut NSRect, id, SEL) = transmute(crate::ffi::objc_msgSend_stret as *const c_void);
+        func(&mut rect, obj, sel);
+        rect
+    }
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+pub unsafe fn msg_send_rect(obj: id, sel: SEL) -> NSRect {
+    unsafe {
+        let func: unsafe extern "C" fn(id, SEL) -> NSRect = transmute(objc_msgSend as *const c_void);
+        func(obj, sel)
+    }
+}

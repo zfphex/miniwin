@@ -1,6 +1,6 @@
-use crate::ffi::{self, id, Class, NSRect, YES};
+use crate::ffi::{self, id, Class, YES};
 use crate::objc;
-use crate::event::{Event, MouseButton, push_event, pop_all_events};
+use crate::event::{Event, MouseButton, Modifiers, push_event, pop_all_events};
 
 pub struct EventLoop {
     pub ns_app: id,
@@ -150,17 +150,18 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
             std::mem::transmute(ffi::objc_msgSend as *const std::ffi::c_void);
         let event_type = event_type_func(ns_event, event_type_sel);
         
+        let modifier_flags_sel = ffi::sel_registerName(b"modifierFlags\0".as_ptr() as *const _);
+        let modifier_flags_func: unsafe extern "C" fn(id, ffi::SEL) -> usize =
+            std::mem::transmute(ffi::objc_msgSend as *const std::ffi::c_void);
+        let flags = modifier_flags_func(ns_event, modifier_flags_sel);
+        let modifiers = Modifiers::parse(flags);
+
         match event_type {
             ffi::NSEventTypeKeyDown | ffi::NSEventTypeKeyUp => {
                 let key_code_sel = ffi::sel_registerName(b"keyCode\0".as_ptr() as *const _);
                 let key_code_func: unsafe extern "C" fn(id, ffi::SEL) -> u16 =
                     std::mem::transmute(ffi::objc_msgSend as *const std::ffi::c_void);
                 let keycode = key_code_func(ns_event, key_code_sel);
-                
-                let modifier_flags_sel = ffi::sel_registerName(b"modifierFlags\0".as_ptr() as *const _);
-                let modifier_flags_func: unsafe extern "C" fn(id, ffi::SEL) -> usize =
-                    std::mem::transmute(ffi::objc_msgSend as *const std::ffi::c_void);
-                let modifiers = modifier_flags_func(ns_event, modifier_flags_sel) as u32;
                 
                 if event_type == ffi::NSEventTypeKeyDown {
                     Some(Event::KeyDown { keycode, modifiers })
@@ -175,6 +176,17 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                     std::mem::transmute(ffi::objc_msgSend as *const std::ffi::c_void);
                 let loc = loc_func(ns_event, loc_sel);
                 
+                let x = loc.x;
+                let mut y = loc.y;
+                
+                let window = objc::msg_send_id(ns_event, ffi::sel_registerName(b"window\0".as_ptr() as *const _));
+                if !window.is_null() {
+                    let content_view = objc::msg_send_id(window, ffi::sel_registerName(b"contentView\0".as_ptr() as *const _));
+                    let frame_sel = ffi::sel_registerName(b"frame\0".as_ptr() as *const _);
+                    let frame = objc::msg_send_rect(content_view, frame_sel);
+                    y = frame.size.height - loc.y;
+                }
+                
                 let button = match event_type {
                     ffi::NSEventTypeLeftMouseDown | ffi::NSEventTypeLeftMouseUp => MouseButton::Left,
                     ffi::NSEventTypeRightMouseDown | ffi::NSEventTypeRightMouseUp => MouseButton::Right,
@@ -182,9 +194,9 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                 };
                 
                 if event_type == ffi::NSEventTypeLeftMouseDown || event_type == ffi::NSEventTypeRightMouseDown {
-                    Some(Event::MouseDown { button, x: loc.x, y: loc.y })
+                    Some(Event::MouseDown { button, x, y, modifiers })
                 } else {
-                    Some(Event::MouseUp { button, x: loc.x, y: loc.y })
+                    Some(Event::MouseUp { button, x, y, modifiers })
                 }
             }
             ffi::NSEventTypeMouseMoved => {
@@ -192,19 +204,41 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                 let loc_func: unsafe extern "C" fn(id, ffi::SEL) -> ffi::NSPoint =
                     std::mem::transmute(ffi::objc_msgSend as *const std::ffi::c_void);
                 let loc = loc_func(ns_event, loc_sel);
-                Some(Event::MouseMoved { x: loc.x, y: loc.y })
+                
+                let x = loc.x;
+                let mut y = loc.y;
+                
+                let window = objc::msg_send_id(ns_event, ffi::sel_registerName(b"window\0".as_ptr() as *const _));
+                if !window.is_null() {
+                    let content_view = objc::msg_send_id(window, ffi::sel_registerName(b"contentView\0".as_ptr() as *const _));
+                    let frame_sel = ffi::sel_registerName(b"frame\0".as_ptr() as *const _);
+                    let frame = objc::msg_send_rect(content_view, frame_sel);
+                    y = frame.size.height - loc.y;
+                }
+                Some(Event::MouseMoved { x, y, modifiers })
             }
             ffi::NSEventTypeLeftMouseDragged | ffi::NSEventTypeRightMouseDragged => {
                 let loc_sel = ffi::sel_registerName(b"locationInWindow\0".as_ptr() as *const _);
                 let loc_func: unsafe extern "C" fn(id, ffi::SEL) -> ffi::NSPoint =
                     std::mem::transmute(ffi::objc_msgSend as *const std::ffi::c_void);
                 let loc = loc_func(ns_event, loc_sel);
+                
+                let x = loc.x;
+                let mut y = loc.y;
+                
+                let window = objc::msg_send_id(ns_event, ffi::sel_registerName(b"window\0".as_ptr() as *const _));
+                if !window.is_null() {
+                    let content_view = objc::msg_send_id(window, ffi::sel_registerName(b"contentView\0".as_ptr() as *const _));
+                    let frame_sel = ffi::sel_registerName(b"frame\0".as_ptr() as *const _);
+                    let frame = objc::msg_send_rect(content_view, frame_sel);
+                    y = frame.size.height - loc.y;
+                }
                 let button = if event_type == ffi::NSEventTypeLeftMouseDragged {
                     MouseButton::Left
                 } else {
                     MouseButton::Right
                 };
-                Some(Event::MouseDragged { button, x: loc.x, y: loc.y })
+                Some(Event::MouseDragged { button, x, y, modifiers })
             }
             ffi::NSEventTypeScrollWheel => {
                 let dx_sel = ffi::sel_registerName(b"scrollingDeltaX\0".as_ptr() as *const _);
@@ -213,7 +247,7 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                     std::mem::transmute(ffi::objc_msgSend as *const std::ffi::c_void);
                 let delta_x = double_func(ns_event, dx_sel);
                 let delta_y = double_func(ns_event, dy_sel);
-                Some(Event::Scroll { delta_x, delta_y })
+                Some(Event::Scroll { delta_x, delta_y, modifiers })
             }
             _ => None,
         }
@@ -263,13 +297,21 @@ extern "C" fn window_did_resize(_this: id, _cmd: ffi::SEL, notification: id) {
         let window: id = objc::msg_send_id(notification, ffi::sel_registerName(b"object\0".as_ptr() as *const _));
         let content_view = objc::msg_send_id(window, ffi::sel_registerName(b"contentView\0".as_ptr() as *const _));
         let frame_sel = ffi::sel_registerName(b"frame\0".as_ptr() as *const _);
-        let frame_func: unsafe extern "C" fn(id, ffi::SEL) -> NSRect =
+        let frame = objc::msg_send_rect(content_view, frame_sel);
+        
+        let scale_sel = ffi::sel_registerName(b"backingScaleFactor\0".as_ptr() as *const _);
+        let scale_func: unsafe extern "C" fn(id, ffi::SEL) -> f64 =
             std::mem::transmute(ffi::objc_msgSend as *const std::ffi::c_void);
-        let frame = frame_func(content_view, frame_sel);
+        let scale = scale_func(window, scale_sel);
+        
+        let physical_width = (frame.size.width * scale) as usize;
+        let physical_height = (frame.size.height * scale) as usize;
         
         push_event(Event::Resized {
             width: frame.size.width,
             height: frame.size.height,
+            physical_width,
+            physical_height,
         });
     }
 }

@@ -91,6 +91,9 @@ unsafe extern "C" {
     // The main dispatch function
     pub fn objc_msgSend();
 
+    #[cfg(target_arch = "x86_64")]
+    pub fn objc_msgSend_stret();
+
     // Class creation functions for delegates
     pub fn objc_allocateClassPair(
         superclass: Class,

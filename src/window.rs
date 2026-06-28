@@ -57,9 +57,7 @@ impl Window {
                     ffi::sel_registerName(b"mainScreen\0".as_ptr() as *const _),
                 );
                 let frame_sel = ffi::sel_registerName(b"frame\0".as_ptr() as *const _);
-                let frame_func: unsafe extern "C" fn(id, ffi::SEL) -> NSRect =
-                    std::mem::transmute(ffi::objc_msgSend as *const std::ffi::c_void);
-                let screen_rect = frame_func(main_screen, frame_sel);
+                let screen_rect = objc::msg_send_rect(main_screen, frame_sel);
                 final_width = screen_rect.size.width;
                 final_height = screen_rect.size.height;
                 style_mask = ffi::NSWindowStyleMaskBorderless;
@@ -210,6 +208,15 @@ impl Window {
             ffi::CFRelease(cg_image as ffi::CFTypeRef);
             ffi::CFRelease(provider as ffi::CFTypeRef);
             ffi::CFRelease(color_space as ffi::CFTypeRef);
+        }
+    }
+
+    pub fn backing_scale_factor(&self) -> f64 {
+        unsafe {
+            let scale_sel = ffi::sel_registerName(b"backingScaleFactor\0".as_ptr() as *const _);
+            let scale_func: unsafe extern "C" fn(id, ffi::SEL) -> f64 =
+                std::mem::transmute(ffi::objc_msgSend as *const std::ffi::c_void);
+            scale_func(self.ns_window, scale_sel)
         }
     }
 }
