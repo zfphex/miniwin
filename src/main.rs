@@ -1,13 +1,22 @@
-use winmac::ffi::*;
+use winmac::event_loop::EventLoop;
+use winmac::window::{FullscreenMode, Window, WindowStyle};
 
 fn main() {
-    unsafe {
-        let cls_name = std::ffi::CString::new("NSApplication").unwrap();
-        let cls = objc_getClass(cls_name.as_ptr());
-        println!("NSApplication Class pointer: {:?}", cls);
-        
-        let sel_name = std::ffi::CString::new("sharedApplication").unwrap();
-        let sel = sel_registerName(sel_name.as_ptr());
-        println!("sharedApplication Selector: {:?}", sel);
-    }
+    println!("Initializing EventLoop...");
+    let _el = EventLoop::new();
+
+    println!("Creating window...");
+    let window = Window::new(
+        "Stage 2 Test Window",
+        800.0,
+        600.0,
+        WindowStyle::Standard,
+        FullscreenMode::None,
+    );
+
+    println!("Showing window...");
+    window.make_key_and_order_front();
+
+    println!("Window initialized successfully! Sleeping for 2 seconds...");
+    std::thread::sleep(std::time::Duration::from_secs(2));
 }

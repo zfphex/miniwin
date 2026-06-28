@@ -3,20 +3,15 @@
 use std::os::raw::{c_char, c_schar};
 
 // Objective-C Opaque types
-#[allow(non_camel_case_types)]
 pub type id = *mut std::ffi::c_void;
-#[allow(non_camel_case_types)]
 pub type SEL = *mut std::ffi::c_void;
-#[allow(non_camel_case_types)]
 pub type Class = *mut std::ffi::c_void;
 
 // Objective-C BOOL
-#[allow(non_camel_case_types)]
 pub type BOOL = c_schar;
 pub const YES: BOOL = 1;
 pub const NO: BOOL = 0;
 
-#[allow(non_upper_case_globals)]
 pub const nil: id = std::ptr::null_mut();
 
 // Core Graphics / Quartz Core / Apple Geometry types
