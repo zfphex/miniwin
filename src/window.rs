@@ -18,6 +18,7 @@ pub enum FullscreenMode {
 pub struct Window {
     pub ns_window: id,
     pub ns_view: id,
+    pub ns_delegate: id,
 }
 
 impl Window {
@@ -144,7 +145,18 @@ impl Window {
                 );
             }
 
-            Window { ns_window, ns_view }
+            // Create and set delegate
+            let delegate_class = crate::event_loop::register_delegate_class();
+            let delegate_alloc = objc::msg_send_id(delegate_class, ffi::sel_registerName(b"alloc\0".as_ptr() as *const _));
+            let ns_delegate = objc::msg_send_id(delegate_alloc, ffi::sel_registerName(b"init\0".as_ptr() as *const _));
+            
+            objc::msg_send_id_id_void(
+                ns_window,
+                ffi::sel_registerName(b"setDelegate:\0".as_ptr() as *const _),
+                ns_delegate,
+            );
+
+            Window { ns_window, ns_view, ns_delegate }
         }
     }
 
