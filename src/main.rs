@@ -15,8 +15,6 @@ fn main() {
     let physical_width = (800.0 * scale) as usize;
     let physical_height = (600.0 * scale) as usize;
 
-    window.make_key_and_order_front();
-
     println!("Demo Controls:");
     println!("  [C] - Cycle cursor icon (Arrow -> IBeam -> PointingHand -> Crosshair)");
     println!("  [V] - Toggle cursor visibility");

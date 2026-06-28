@@ -300,6 +300,12 @@ impl Window {
                 ns_delegate,
             );
 
+            msg_send_id_id_void(
+                ns_window,
+                sel_registerName(b"makeKeyAndOrderFront:\0".as_ptr() as *const _),
+                nil,
+            );
+
             let vsync = VsyncTracker::new();
 
             Window {
