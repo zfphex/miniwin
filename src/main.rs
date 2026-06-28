@@ -1,10 +1,6 @@
-use winmac::event_loop::EventLoop;
 use winmac::window::{FullscreenMode, Window, WindowStyle};
 
 fn main() {
-    println!("Initializing EventLoop...");
-    let event_loop = EventLoop::new();
-
     // Logical sizing
     let width = 800;
     let height = 600;
@@ -64,7 +60,7 @@ fn main() {
     };
 
     while running {
-        let events = event_loop.poll_events(&mut draw);
+        let events = window.poll_events(&mut draw);
         for event in events {
             println!("Event: {:?}", event);
             match event {
@@ -83,7 +79,7 @@ fn main() {
         let ph = (h * scale) as usize;
         draw(&mut window, pw, ph);
 
-        event_loop.wait_for_vsync();
+        window.wait_for_vsync();
     }
 
     println!("Clean exit.");

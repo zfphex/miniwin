@@ -34,11 +34,15 @@ impl VsyncTracker {
                 panic!("Failed to create GCD semaphore");
             }
 
-            let callback_res = CVDisplayLinkSetOutputCallback(display_link, display_link_callback, semaphore);
+            let callback_res =
+                CVDisplayLinkSetOutputCallback(display_link, display_link_callback, semaphore);
             if callback_res != 0 {
                 dispatch_release(semaphore);
                 CVDisplayLinkRelease(display_link);
-                panic!("Failed to set CVDisplayLink output callback (result: {})", callback_res);
+                panic!(
+                    "Failed to set CVDisplayLink output callback (result: {})",
+                    callback_res
+                );
             }
 
             let start_res = CVDisplayLinkStart(display_link);
