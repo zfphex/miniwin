@@ -11,6 +11,7 @@ thread_local! {
 
 pub struct EventLoop {
     pub ns_app: id,
+    vsync: crate::vsync::VsyncTracker,
     _marker: std::marker::PhantomData<*mut ()>,
 }
 
@@ -47,11 +48,18 @@ impl EventLoop {
                 sel_registerName(b"finishLaunching\0".as_ptr() as *const _),
             );
 
+            let vsync = crate::vsync::VsyncTracker::new();
+
             EventLoop {
                 ns_app,
+                vsync,
                 _marker: std::marker::PhantomData,
             }
         }
+    }
+
+    pub fn wait_for_vsync(&self) {
+        self.vsync.wait_for_vsync();
     }
 
     unsafe fn setup_menu_bar(ns_app: id) {

@@ -165,3 +165,44 @@ unsafe extern "C" {
     ) -> CGImageRef;
     pub fn CFRelease(cf: CFTypeRef);
 }
+
+// CoreVideo types and functions
+pub type CVDisplayLinkRef = *mut std::ffi::c_void;
+pub type CVReturn = i32;
+
+pub type CVDisplayLinkOutputCallback = unsafe extern "C" fn(
+    displayLink: CVDisplayLinkRef,
+    inNow: *const std::ffi::c_void,
+    inOutputTime: *const std::ffi::c_void,
+    flagsIn: u64,
+    flagsOut: *mut u64,
+    displayLinkContext: *mut std::ffi::c_void,
+) -> CVReturn;
+
+#[link(name = "CoreVideo", kind = "framework")]
+unsafe extern "C" {
+    pub fn CVDisplayLinkCreateWithActiveCGDisplays(
+        displayLinkOut: *mut CVDisplayLinkRef,
+    ) -> CVReturn;
+    pub fn CVDisplayLinkSetOutputCallback(
+        displayLink: CVDisplayLinkRef,
+        callback: CVDisplayLinkOutputCallback,
+        userInfo: *mut std::ffi::c_void,
+    ) -> CVReturn;
+    pub fn CVDisplayLinkStart(displayLink: CVDisplayLinkRef) -> CVReturn;
+    pub fn CVDisplayLinkStop(displayLink: CVDisplayLinkRef) -> CVReturn;
+    pub fn CVDisplayLinkRelease(displayLink: CVDisplayLinkRef);
+}
+
+// Grand Central Dispatch (GCD) Semaphores
+pub type dispatch_semaphore_t = *mut std::ffi::c_void;
+pub const DISPATCH_TIME_FOREVER: u64 = !0u64;
+
+unsafe extern "C" {
+    pub fn dispatch_semaphore_create(value: isize) -> dispatch_semaphore_t;
+    pub fn dispatch_semaphore_signal(dsema: dispatch_semaphore_t) -> isize;
+    pub fn dispatch_semaphore_wait(dsema: dispatch_semaphore_t, timeout: u64) -> isize;
+    pub fn dispatch_release(object: *mut std::ffi::c_void);
+}
+
+

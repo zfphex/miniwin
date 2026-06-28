@@ -83,7 +83,7 @@ fn main() {
         let ph = (h * scale) as usize;
         draw(&mut window, pw, ph);
 
-        std::thread::sleep(std::time::Duration::from_millis(16)); // ~60 FPS
+        event_loop.wait_for_vsync();
     }
 
     println!("Clean exit.");
