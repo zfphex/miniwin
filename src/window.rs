@@ -169,4 +169,57 @@ impl Window {
             );
         }
     }
+
+    pub fn update_buffer(&mut self, pixels: &[u32], width: usize, height: usize) {
+        unsafe {
+            let size = pixels.len() * 4;
+            let boxed_pixels = pixels.to_vec();
+            let data_ptr = boxed_pixels.as_ptr() as *const std::ffi::c_void;
+            std::mem::forget(boxed_pixels);
+            
+            let provider = ffi::CGDataProviderCreateWithData(
+                std::ptr::null_mut(),
+                data_ptr,
+                size,
+                Some(release_provider_data),
+            );
+            
+            let color_space = ffi::CGColorSpaceCreateDeviceRGB();
+            let bitmap_info = ffi::kCGImageAlphaNoneSkipFirst | ffi::kCGBitmapByteOrder32Little;
+            
+            let cg_image = ffi::CGImageCreate(
+                width,
+                height,
+                8,
+                32,
+                width * 4,
+                color_space,
+                bitmap_info,
+                provider,
+                std::ptr::null(),
+                false,
+                0,
+            );
+            
+            let layer_sel = ffi::sel_registerName(b"layer\0".as_ptr() as *const _);
+            let layer = objc::msg_send_id(self.ns_view, layer_sel);
+            
+            let set_contents_sel = ffi::sel_registerName(b"setContents:\0".as_ptr() as *const _);
+            objc::msg_send_id_id_void(layer, set_contents_sel, cg_image as id);
+            
+            ffi::CFRelease(cg_image as ffi::CFTypeRef);
+            ffi::CFRelease(provider as ffi::CFTypeRef);
+            ffi::CFRelease(color_space as ffi::CFTypeRef);
+        }
+    }
+}
+
+unsafe extern "C" fn release_provider_data(
+    _info: *mut std::ffi::c_void,
+    data: *const std::ffi::c_void,
+    size: usize,
+) {
+    unsafe {
+        let _vec = Vec::from_raw_parts(data as *mut u32, size / 4, size / 4);
+    }
 }

@@ -105,3 +105,41 @@ unsafe extern "C" {
     ) -> bool;
     pub fn objc_registerClassPair(cls: Class);
 }
+
+// Core Graphics Types
+pub type CGColorSpaceRef = *mut std::ffi::c_void;
+pub type CGDataProviderRef = *mut std::ffi::c_void;
+pub type CGImageRef = *mut std::ffi::c_void;
+pub type CFTypeRef = *mut std::ffi::c_void;
+
+// Core Graphics Constants
+pub const kCGImageAlphaNoneSkipFirst: u32 = 6;
+pub const kCGImageAlphaPremultipliedFirst: u32 = 2;
+pub const kCGBitmapByteOrder32Little: u32 = 2 << 12;
+
+// CoreGraphics & CoreFoundation FFI
+#[link(name = "CoreGraphics", kind = "framework")]
+#[link(name = "QuartzCore", kind = "framework")]
+unsafe extern "C" {
+    pub fn CGColorSpaceCreateDeviceRGB() -> CGColorSpaceRef;
+    pub fn CGDataProviderCreateWithData(
+        info: *mut std::ffi::c_void,
+        data: *const std::ffi::c_void,
+        size: usize,
+        releaseData: Option<unsafe extern "C" fn(*mut std::ffi::c_void, *const std::ffi::c_void, usize)>,
+    ) -> CGDataProviderRef;
+    pub fn CGImageCreate(
+        width: usize,
+        height: usize,
+        bitsPerComponent: usize,
+        bitsPerPixel: usize,
+        bytesPerRow: usize,
+        space: CGColorSpaceRef,
+        bitmapInfo: u32,
+        provider: CGDataProviderRef,
+        decode: *const f64,
+        shouldInterpolate: bool,
+        intent: i32,
+    ) -> CGImageRef;
+    pub fn CFRelease(cf: CFTypeRef);
+}
