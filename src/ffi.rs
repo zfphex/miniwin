@@ -1,0 +1,112 @@
+#![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
+
+use std::os::raw::{c_char, c_schar};
+
+// Objective-C Opaque types
+#[allow(non_camel_case_types)]
+pub type id = *mut std::ffi::c_void;
+#[allow(non_camel_case_types)]
+pub type SEL = *mut std::ffi::c_void;
+#[allow(non_camel_case_types)]
+pub type Class = *mut std::ffi::c_void;
+
+// Objective-C BOOL
+#[allow(non_camel_case_types)]
+pub type BOOL = c_schar;
+pub const YES: BOOL = 1;
+pub const NO: BOOL = 0;
+
+#[allow(non_upper_case_globals)]
+pub const nil: id = std::ptr::null_mut();
+
+// Core Graphics / Quartz Core / Apple Geometry types
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct NSPoint {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct NSSize {
+    pub width: f64,
+    pub height: f64,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct NSRect {
+    pub origin: NSPoint,
+    pub size: NSSize,
+}
+
+impl NSRect {
+    pub const fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
+        Self {
+            origin: NSPoint { x, y },
+            size: NSSize { width, height },
+        }
+    }
+}
+
+// NSWindowStyleMask
+pub type NSWindowStyleMask = usize;
+pub const NSWindowStyleMaskBorderless: NSWindowStyleMask = 0;
+pub const NSWindowStyleMaskTitled: NSWindowStyleMask = 1 << 0;
+pub const NSWindowStyleMaskClosable: NSWindowStyleMask = 1 << 1;
+pub const NSWindowStyleMaskMiniaturizable: NSWindowStyleMask = 1 << 2;
+pub const NSWindowStyleMaskResizable: NSWindowStyleMask = 1 << 3;
+pub const NSWindowStyleMaskFullScreen: NSWindowStyleMask = 1 << 14;
+
+// NSBackingStoreType
+pub type NSBackingStoreType = usize;
+pub const NSBackingStoreBuffered: NSBackingStoreType = 2;
+
+// NSEventType
+pub type NSEventType = usize;
+pub const NSEventTypeLeftMouseDown: NSEventType = 1;
+pub const NSEventTypeLeftMouseUp: NSEventType = 2;
+pub const NSEventTypeRightMouseDown: NSEventType = 3;
+pub const NSEventTypeRightMouseUp: NSEventType = 4;
+pub const NSEventTypeMouseMoved: NSEventType = 5;
+pub const NSEventTypeLeftMouseDragged: NSEventType = 6;
+pub const NSEventTypeRightMouseDragged: NSEventType = 7;
+pub const NSEventTypeMouseEntered: NSEventType = 8;
+pub const NSEventTypeMouseExited: NSEventType = 9;
+pub const NSEventTypeKeyDown: NSEventType = 10;
+pub const NSEventTypeKeyUp: NSEventType = 11;
+pub const NSEventTypeFlagsChanged: NSEventType = 12;
+pub const NSEventTypeScrollWheel: NSEventType = 22;
+
+pub const NSEventMaskAny: u64 = std::u64::MAX;
+
+// Activation policy
+pub type NSApplicationActivationPolicy = isize;
+pub const NSApplicationActivationPolicyRegular: NSApplicationActivationPolicy = 0;
+
+// Linker configuration for zero dependencies
+#[link(name = "objc")]
+#[link(name = "Foundation", kind = "framework")]
+#[link(name = "AppKit", kind = "framework")]
+unsafe extern "C" {
+    pub fn objc_getClass(name: *const c_char) -> Class;
+    pub fn sel_registerName(name: *const c_char) -> SEL;
+
+    // The main dispatch function
+    pub fn objc_msgSend();
+
+    // Class creation functions for delegates
+    pub fn objc_allocateClassPair(
+        superclass: Class,
+        name: *const c_char,
+        extra_bytes: usize,
+    ) -> Class;
+    pub fn class_addMethod(
+        cls: Class,
+        name: SEL,
+        imp: extern "C" fn(),
+        types: *const c_char,
+    ) -> bool;
+    pub fn objc_registerClassPair(cls: Class);
+}
