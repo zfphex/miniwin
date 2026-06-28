@@ -204,3 +204,10 @@ unsafe extern "C" {
     pub fn dispatch_semaphore_wait(dsema: dispatch_semaphore_t, timeout: u64) -> isize;
     pub fn dispatch_release(object: *mut std::ffi::c_void);
 }
+
+// CoreGraphics cursor association
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    pub fn CGAssociateMouseAndMouseCursorPosition(connected: bool) -> i32;
+}
+

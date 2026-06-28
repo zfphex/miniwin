@@ -4,6 +4,7 @@ use crate::event::*;
 use crate::ffi::*;
 use crate::objc::*;
 use crate::vsync::VsyncTracker;
+use std::path::PathBuf;
 
 thread_local! {
     pub(crate) static REPAINT_CALLBACK: std::cell::Cell<Option<*mut std::ffi::c_void>> = std::cell::Cell::new(None);
@@ -22,6 +23,18 @@ pub enum FullscreenMode {
     None,
     Workspace,  // Native macOS fullscreen
     MonitorFit, // Fits the borderless window to monitor size
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CursorIcon {
+    Arrow,
+    IBeam,
+    PointingHand,
+    ClosedHand,
+    OpenHand,
+    Crosshair,
+    ResizeLeftRight,
+    ResizeUpDown,
 }
 
 pub struct Window {
@@ -52,14 +65,17 @@ impl Window {
                     sel_registerName(b"sharedApplication\0".as_ptr() as *const _),
                 );
 
-                let set_policy_sel =
-                    sel_registerName(b"setActivationPolicy:\0".as_ptr() as *const _);
+                let set_policy_sel = sel_registerName(b"setActivationPolicy:\0".as_ptr() as *const _);
                 let set_policy: unsafe extern "C" fn(
                     id,
                     SEL,
                     NSApplicationActivationPolicy,
                 ) -> BOOL = std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
-                set_policy(ns_app, set_policy_sel, NSApplicationActivationPolicyRegular);
+                set_policy(
+                    ns_app,
+                    set_policy_sel,
+                    NSApplicationActivationPolicyRegular,
+                );
 
                 // Register delegate class
                 register_delegate_class();
@@ -69,7 +85,10 @@ impl Window {
                 let init_sel = sel_registerName(b"init\0".as_ptr() as *const _);
 
                 let main_menu = msg_send_id(
-                    msg_send_id(objc_getClass(b"NSMenu\0".as_ptr() as *const _), alloc_sel),
+                    msg_send_id(
+                        objc_getClass(b"NSMenu\0".as_ptr() as *const _),
+                        alloc_sel,
+                    ),
                     init_sel,
                 );
 
@@ -88,7 +107,10 @@ impl Window {
                 );
 
                 let app_menu = msg_send_id(
-                    msg_send_id(objc_getClass(b"NSMenu\0".as_ptr() as *const _), alloc_sel),
+                    msg_send_id(
+                        objc_getClass(b"NSMenu\0".as_ptr() as *const _),
+                        alloc_sel,
+                    ),
                     init_sel,
                 );
 
@@ -147,7 +169,9 @@ impl Window {
                         | NSWindowStyleMaskMiniaturizable
                         | NSWindowStyleMaskResizable
                 }
-                WindowStyle::Borderless | WindowStyle::Transparent => NSWindowStyleMaskBorderless,
+                WindowStyle::Borderless | WindowStyle::Transparent => {
+                    NSWindowStyleMaskBorderless
+                }
             };
 
             if fullscreen == FullscreenMode::Workspace {
@@ -246,6 +270,17 @@ impl Window {
                 );
             }
 
+            // Register content view for Drag & Drop file drops
+            let pb_type = nsstring("public.file-url");
+            let array_class = objc_getClass(b"NSArray\0".as_ptr() as *const _);
+            let array_sel = sel_registerName(b"arrayWithObject:\0".as_ptr() as *const _);
+            let array_func: unsafe extern "C" fn(id, SEL, id) -> id = std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+            let types_array = array_func(array_class, array_sel, pb_type);
+
+            let register_sel = sel_registerName(b"registerForDraggedTypes:\0".as_ptr() as *const _);
+            let register_func: unsafe extern "C" fn(id, SEL, id) = std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+            register_func(ns_view, register_sel, types_array);
+
             // Create and set delegate
             let delegate_class = register_delegate_class();
             let delegate_alloc = msg_send_id(
@@ -339,20 +374,100 @@ impl Window {
 
     pub fn content_size(&self) -> (f64, f64) {
         unsafe {
-            let content_view = msg_send_id(
-                self.ns_window,
-                sel_registerName(b"contentView\0".as_ptr() as *const _),
-            );
-            let frame = msg_send_rect(
-                content_view,
-                sel_registerName(b"frame\0".as_ptr() as *const _),
-            );
+            let content_view = msg_send_id(self.ns_window, sel_registerName(b"contentView\0".as_ptr() as *const _));
+            let frame = msg_send_rect(content_view, sel_registerName(b"frame\0".as_ptr() as *const _));
             (frame.size.width, frame.size.height)
         }
     }
 
     pub fn wait_for_vsync(&self) {
         self.vsync.wait_for_vsync();
+    }
+
+    pub fn set_cursor_visible(&self, visible: bool) {
+        unsafe {
+            let ns_cursor = objc_getClass(b"NSCursor\0".as_ptr() as *const _);
+            let sel = if visible {
+                sel_registerName(b"unhide\0".as_ptr() as *const _)
+            } else {
+                sel_registerName(b"hide\0".as_ptr() as *const _)
+            };
+            msg_send_id(ns_cursor, sel);
+        }
+    }
+
+    pub fn set_cursor_grab(&self, grab: bool) {
+        unsafe {
+            CGAssociateMouseAndMouseCursorPosition(!grab);
+        }
+    }
+
+    pub fn set_cursor_icon(&self, icon: CursorIcon) {
+        unsafe {
+            let ns_cursor = objc_getClass(b"NSCursor\0".as_ptr() as *const _);
+            let selector = match icon {
+                CursorIcon::Arrow => b"arrowCursor\0".as_ptr(),
+                CursorIcon::IBeam => b"IBeamCursor\0".as_ptr(),
+                CursorIcon::PointingHand => b"pointingHandCursor\0".as_ptr(),
+                CursorIcon::ClosedHand => b"closedHandCursor\0".as_ptr(),
+                CursorIcon::OpenHand => b"openHandCursor\0".as_ptr(),
+                CursorIcon::Crosshair => b"crosshairCursor\0".as_ptr(),
+                CursorIcon::ResizeLeftRight => b"resizeLeftRightCursor\0".as_ptr(),
+                CursorIcon::ResizeUpDown => b"resizeUpDownCursor\0".as_ptr(),
+            };
+            let cursor_sel = sel_registerName(selector as *const _);
+            let cursor = msg_send_id(ns_cursor, cursor_sel);
+            if !cursor.is_null() {
+                msg_send_id(cursor, sel_registerName(b"set\0".as_ptr() as *const _));
+            }
+        }
+    }
+
+    pub fn get_clipboard_text(&self) -> Option<String> {
+        unsafe {
+            let pb_class = objc_getClass(b"NSPasteboard\0".as_ptr() as *const _);
+            let pb = msg_send_id(pb_class, sel_registerName(b"generalPasteboard\0".as_ptr() as *const _));
+            if pb.is_null() {
+                return None;
+            }
+
+            let type_ns = nsstring("public.utf8-plain-text");
+            let string_sel = sel_registerName(b"stringForType:\0".as_ptr() as *const _);
+            let string_func: unsafe extern "C" fn(id, SEL, id) -> id = std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+            let ns_string = string_func(pb, string_sel, type_ns);
+
+            if ns_string.is_null() {
+                return None;
+            }
+
+            let utf8_func: unsafe extern "C" fn(id, SEL) -> *const std::os::raw::c_char = std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+            let utf8_ptr = utf8_func(ns_string, sel_registerName(b"UTF8String\0".as_ptr() as *const _));
+            if utf8_ptr.is_null() {
+                return None;
+            }
+
+            let c_str = std::ffi::CStr::from_ptr(utf8_ptr);
+            c_str.to_str().ok().map(|s| s.to_string())
+        }
+    }
+
+    pub fn set_clipboard_text(&self, text: &str) {
+        unsafe {
+            let pb_class = objc_getClass(b"NSPasteboard\0".as_ptr() as *const _);
+            let pb = msg_send_id(pb_class, sel_registerName(b"generalPasteboard\0".as_ptr() as *const _));
+            if pb.is_null() {
+                return;
+            }
+
+            msg_send_id(pb, sel_registerName(b"clearContents\0".as_ptr() as *const _));
+
+            let type_ns = nsstring("public.utf8-plain-text");
+            let text_ns = nsstring(text);
+
+            let set_sel = sel_registerName(b"setString:forType:\0".as_ptr() as *const _);
+            let set_func: unsafe extern "C" fn(id, SEL, id, id) -> BOOL = std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+            set_func(pb, set_sel, text_ns, type_ns);
+        }
     }
 
     pub fn poll_events<F>(&mut self, mut repaint: F) -> Vec<Event>
@@ -512,6 +627,26 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                 let keycode = key_code_func(ns_event, key_code_sel);
 
                 if event_type == NSEventTypeKeyDown {
+                    // Extract text input characters
+                    let chars_ns = msg_send_id(ns_event, sel_registerName(b"characters\0".as_ptr() as *const _));
+                    if !chars_ns.is_null() {
+                        let len_func: unsafe extern "C" fn(id, SEL) -> usize = std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+                        let len = len_func(chars_ns, sel_registerName(b"length\0".as_ptr() as *const _));
+                        if len > 0 {
+                            let utf8_func: unsafe extern "C" fn(id, SEL) -> *const std::os::raw::c_char = std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+                            let utf8_ptr = utf8_func(chars_ns, sel_registerName(b"UTF8String\0".as_ptr() as *const _));
+                            if !utf8_ptr.is_null() {
+                                let c_str = std::ffi::CStr::from_ptr(utf8_ptr);
+                                if let Ok(s) = c_str.to_str() {
+                                    for c in s.chars() {
+                                        if !c.is_control() {
+                                            push_event(Event::ReceivedCharacter(c));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     Some(Event::KeyDown { keycode, modifiers })
                 } else {
                     Some(Event::KeyUp { keycode, modifiers })
@@ -529,8 +664,10 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                 let x = loc.x;
                 let mut y = loc.y;
 
-                let window =
-                    msg_send_id(ns_event, sel_registerName(b"window\0".as_ptr() as *const _));
+                let window = msg_send_id(
+                    ns_event,
+                    sel_registerName(b"window\0".as_ptr() as *const _),
+                );
                 if !window.is_null() {
                     let content_view = msg_send_id(
                         window,
@@ -542,12 +679,17 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                 }
 
                 let button = match event_type {
-                    NSEventTypeLeftMouseDown | NSEventTypeLeftMouseUp => MouseButton::Left,
-                    NSEventTypeRightMouseDown | NSEventTypeRightMouseUp => MouseButton::Right,
+                    NSEventTypeLeftMouseDown | NSEventTypeLeftMouseUp => {
+                        MouseButton::Left
+                    }
+                    NSEventTypeRightMouseDown | NSEventTypeRightMouseUp => {
+                        MouseButton::Right
+                    }
                     _ => MouseButton::Left,
                 };
 
-                if event_type == NSEventTypeLeftMouseDown || event_type == NSEventTypeRightMouseDown
+                if event_type == NSEventTypeLeftMouseDown
+                    || event_type == NSEventTypeRightMouseDown
                 {
                     Some(Event::MouseDown {
                         button,
@@ -573,8 +715,10 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                 let x = loc.x;
                 let mut y = loc.y;
 
-                let window =
-                    msg_send_id(ns_event, sel_registerName(b"window\0".as_ptr() as *const _));
+                let window = msg_send_id(
+                    ns_event,
+                    sel_registerName(b"window\0".as_ptr() as *const _),
+                );
                 if !window.is_null() {
                     let content_view = msg_send_id(
                         window,
@@ -595,8 +739,10 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                 let x = loc.x;
                 let mut y = loc.y;
 
-                let window =
-                    msg_send_id(ns_event, sel_registerName(b"window\0".as_ptr() as *const _));
+                let window = msg_send_id(
+                    ns_event,
+                    sel_registerName(b"window\0".as_ptr() as *const _),
+                );
                 if !window.is_null() {
                     let content_view = msg_send_id(
                         window,
@@ -642,7 +788,11 @@ pub fn register_delegate_class() -> Class {
     let mut cls = std::ptr::null_mut();
     REGISTER_DELEGATE.call_once(|| unsafe {
         let superclass = objc_getClass(b"NSObject\0".as_ptr() as *const _);
-        cls = objc_allocateClassPair(superclass, b"RustWindowDelegate\0".as_ptr() as *const _, 0);
+        cls = objc_allocateClassPair(
+            superclass,
+            b"RustWindowDelegate\0".as_ptr() as *const _,
+            0,
+        );
 
         class_addMethod(
             cls,
@@ -656,6 +806,21 @@ pub fn register_delegate_class() -> Class {
             sel_registerName(b"windowDidResize:\0".as_ptr() as *const _),
             std::mem::transmute(window_did_resize as *const std::ffi::c_void),
             b"v@:@\0".as_ptr() as *const _,
+        );
+
+        // Bind drag-and-drop destination delegate methods
+        class_addMethod(
+            cls,
+            sel_registerName(b"draggingEntered:\0".as_ptr() as *const _),
+            std::mem::transmute(dragging_entered as *const std::ffi::c_void),
+            b"Q@:@\0".as_ptr() as *const _,
+        );
+
+        class_addMethod(
+            cls,
+            sel_registerName(b"performDragOperation:\0".as_ptr() as *const _),
+            std::mem::transmute(perform_drag_operation as *const std::ffi::c_void),
+            b"c@:@\0".as_ptr() as *const _,
         );
 
         objc_registerClassPair(cls);
@@ -698,9 +863,8 @@ extern "C" fn window_did_resize(_this: id, _cmd: SEL, notification: id) {
         let func_opt = REPAINT_FUNC.with(|f| f.get());
 
         if let (Some(ptr), Some(func)) = (callback_opt, func_opt) {
-            let delegate =
-                msg_send_id(window, sel_registerName(b"delegate\0".as_ptr() as *const _));
-            let mut temp_window = std::mem::ManuallyDrop::new(crate::window::Window::from_raw(
+            let delegate = msg_send_id(window, sel_registerName(b"delegate\0".as_ptr() as *const _));
+            let mut temp_window = std::mem::ManuallyDrop::new(Window::from_raw(
                 window,
                 content_view,
                 delegate,
@@ -714,6 +878,68 @@ extern "C" fn window_did_resize(_this: id, _cmd: SEL, notification: id) {
             physical_width,
             physical_height,
         });
+    }
+}
+
+extern "C" fn dragging_entered(_this: id, _cmd: SEL, _sender: id) -> usize {
+    1 // NSDragOperationGeneric
+}
+
+extern "C" fn perform_drag_operation(_this: id, _cmd: SEL, sender: id) -> BOOL {
+    unsafe {
+        let pb_sel = sel_registerName(b"draggingPasteboard\0".as_ptr() as *const _);
+        let pb = msg_send_id(sender, pb_sel);
+        if pb.is_null() {
+            return NO;
+        }
+
+        // Read file URLs from the pasteboard
+        let url_class = objc_getClass(b"NSURL\0".as_ptr() as *const _);
+        let class_array_class = objc_getClass(b"NSArray\0".as_ptr() as *const _);
+        let array_sel = sel_registerName(b"arrayWithObject:\0".as_ptr() as *const _);
+        let array_func: unsafe extern "C" fn(id, SEL, id) -> id = std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+        let classes = array_func(class_array_class, array_sel, url_class);
+
+        let read_sel = sel_registerName(b"readObjectsForClasses:options:\0".as_ptr() as *const _);
+        let read_func: unsafe extern "C" fn(id, SEL, id, id) -> id = std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+        let urls = read_func(pb, read_sel, classes, std::ptr::null_mut());
+
+        if urls.is_null() {
+            return NO;
+        }
+
+        let count_sel = sel_registerName(b"count\0".as_ptr() as *const _);
+        let count_func: unsafe extern "C" fn(id, SEL) -> usize = std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+        let count = count_func(urls, count_sel);
+
+        let mut file_paths = Vec::new();
+        let object_at_index_sel = sel_registerName(b"objectAtIndex:\0".as_ptr() as *const _);
+        let object_func: unsafe extern "C" fn(id, SEL, usize) -> id = std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+
+        for i in 0..count {
+            let url = object_func(urls, object_at_index_sel, i);
+            if !url.is_null() {
+                let path_sel = sel_registerName(b"path\0".as_ptr() as *const _);
+                let path_ns = msg_send_id(url, path_sel);
+                if !path_ns.is_null() {
+                    let utf8_func: unsafe extern "C" fn(id, SEL) -> *const std::os::raw::c_char = std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+                    let utf8_ptr = utf8_func(path_ns, sel_registerName(b"UTF8String\0".as_ptr() as *const _));
+                    if !utf8_ptr.is_null() {
+                        let c_str = std::ffi::CStr::from_ptr(utf8_ptr);
+                        if let Ok(s) = c_str.to_str() {
+                            file_paths.push(PathBuf::from(s));
+                        }
+                    }
+                }
+            }
+        }
+
+        if !file_paths.is_empty() {
+            push_event(Event::DroppedFiles(file_paths));
+            YES
+        } else {
+            NO
+        }
     }
 }
 

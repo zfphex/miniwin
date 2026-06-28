@@ -72,6 +72,8 @@ pub enum Event {
         delta_y: f64,
         modifiers: Modifiers,
     },
+    ReceivedCharacter(char),
+    DroppedFiles(Vec<std::path::PathBuf>),
 }
 
 thread_local! {
