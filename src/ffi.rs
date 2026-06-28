@@ -67,11 +67,8 @@ pub const NSEventTypeRightMouseUp: NSEventType = 4;
 pub const NSEventTypeMouseMoved: NSEventType = 5;
 pub const NSEventTypeLeftMouseDragged: NSEventType = 6;
 pub const NSEventTypeRightMouseDragged: NSEventType = 7;
-pub const NSEventTypeMouseEntered: NSEventType = 8;
-pub const NSEventTypeMouseExited: NSEventType = 9;
 pub const NSEventTypeKeyDown: NSEventType = 10;
 pub const NSEventTypeKeyUp: NSEventType = 11;
-pub const NSEventTypeFlagsChanged: NSEventType = 12;
 pub const NSEventTypeScrollWheel: NSEventType = 22;
 
 pub const NSEventMaskAny: u64 = std::u64::MAX;
@@ -106,23 +103,6 @@ unsafe extern "C" {
         imp: extern "C" fn(),
         types: *const c_char,
     ) -> bool;
-    pub fn class_addIvar(
-        cls: Class,
-        name: *const c_char,
-        size: usize,
-        alignment: u8,
-        types: *const c_char,
-    ) -> bool;
-    pub fn object_setInstanceVariable(
-        obj: id,
-        name: *const c_char,
-        value: *mut std::ffi::c_void,
-    ) -> *mut std::ffi::c_void;
-    pub fn object_getInstanceVariable(
-        obj: id,
-        name: *const c_char,
-        out_val: *mut *mut std::ffi::c_void,
-    ) -> *mut std::ffi::c_void;
     pub fn objc_registerClassPair(cls: Class);
 }
 
@@ -134,7 +114,6 @@ pub type CFTypeRef = *mut std::ffi::c_void;
 
 // Core Graphics Constants
 pub const kCGImageAlphaNoneSkipFirst: u32 = 6;
-pub const kCGImageAlphaPremultipliedFirst: u32 = 2;
 pub const kCGBitmapByteOrder32Little: u32 = 2 << 12;
 
 // CoreGraphics & CoreFoundation FFI
