@@ -46,7 +46,9 @@ impl Window {
                         | NSWindowStyleMaskMiniaturizable
                         | NSWindowStyleMaskResizable
                 }
-                WindowStyle::Borderless | WindowStyle::Transparent => NSWindowStyleMaskBorderless,
+                WindowStyle::Borderless | WindowStyle::Transparent => {
+                    NSWindowStyleMaskBorderless
+                }
             };
 
             if fullscreen == FullscreenMode::Workspace {
@@ -230,6 +232,23 @@ impl Window {
             let scale_func: unsafe extern "C" fn(id, SEL) -> f64 =
                 std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
             scale_func(self.ns_window, scale_sel)
+        }
+    }
+
+    pub fn content_size(&self) -> (f64, f64) {
+        unsafe {
+            let content_view = msg_send_id(self.ns_window, sel_registerName(b"contentView\0".as_ptr() as *const _));
+            let frame = msg_send_rect(content_view, sel_registerName(b"frame\0".as_ptr() as *const _));
+            (frame.size.width, frame.size.height)
+        }
+    }
+
+    pub(crate) unsafe fn from_raw(ns_window: id, ns_view: id, ns_delegate: id) -> Self {
+        Window {
+            ns_window,
+            ns_view,
+            ns_delegate,
+            _marker: std::marker::PhantomData,
         }
     }
 }

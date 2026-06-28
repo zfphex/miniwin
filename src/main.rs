@@ -11,7 +11,7 @@ fn main() {
 
     println!("Creating window...");
     let mut window = Window::new(
-        "Stage 5 Retina & Coordinate Test",
+        "Stage 5/6 Live Native Resize Test",
         width as f64,
         height as f64,
         WindowStyle::Standard,
@@ -23,8 +23,8 @@ fn main() {
     println!("Window backing scale factor (Retina multiplier): {}", scale);
 
     // Calculate physical buffer size
-    let mut physical_width = (width as f64 * scale) as usize;
-    let mut physical_height = (height as f64 * scale) as usize;
+    let physical_width = (width as f64 * scale) as usize;
+    let physical_height = (height as f64 * scale) as usize;
     println!(
         "Physical buffer size: {}x{}",
         physical_width, physical_height
@@ -41,8 +41,30 @@ fn main() {
     let mut frame_count = 0;
     let mut running = true;
 
+    // We define our draw logic as a closure. It captures the local environment variables.
+    // During Cocoa's blocking live-resize loop, this closure is executed synchronously
+    // inside the delegate callbacks. During normal loop execution, it is called at the bottom.
+    let mut draw = |win: &mut Window, w: usize, h: usize| {
+        if pixels.len() != w * h {
+            pixels.resize(w * h, 0);
+        }
+
+        // Render a moving color pattern scaled to the physical buffer size
+        for y in 0..h {
+            for x in 0..w {
+                let r = ((x + frame_count) & 0xFF) as u32;
+                let g = ((y + frame_count) & 0xFF) as u32;
+                let b = (frame_count & 0xFF) as u32;
+                pixels[y * w + x] = 0xFF000000 | (r << 16) | (g << 8) | b;
+            }
+        }
+
+        win.update_buffer(&pixels, w, h);
+        frame_count += 2;
+    };
+
     while running {
-        let events = event_loop.poll_events();
+        let events = event_loop.poll_events(&mut draw);
         for event in events {
             println!("Event: {:?}", event);
             match event {
@@ -50,36 +72,16 @@ fn main() {
                     println!("Close requested! Exiting loop...");
                     running = false;
                 }
-                winmac::event::Event::Resized {
-                    width: _w,
-                    height: _h,
-                    physical_width: pw,
-                    physical_height: ph,
-                } => {
-                    physical_width = pw;
-                    physical_height = ph;
-                    pixels.resize(physical_width * physical_height, 0);
-                    println!(
-                        "Buffer resized to physical dimensions: {}x{}",
-                        physical_width, physical_height
-                    );
-                }
                 _ => {}
             }
         }
 
-        // Render a moving color pattern scaled to the physical buffer size
-        for y in 0..physical_height {
-            for x in 0..physical_width {
-                let r = ((x + frame_count) & 0xFF) as u32;
-                let g = ((y + frame_count) & 0xFF) as u32;
-                let b = (frame_count & 0xFF) as u32;
-                pixels[y * physical_width + x] = 0xFF000000 | (r << 16) | (g << 8) | b;
-            }
-        }
-
-        window.update_buffer(&pixels, physical_width, physical_height);
-        frame_count += 2;
+        // Draw regular frames (when not modal resizing)
+        let scale = window.backing_scale_factor();
+        let (w, h) = window.content_size();
+        let pw = (w * scale) as usize;
+        let ph = (h * scale) as usize;
+        draw(&mut window, pw, ph);
 
         std::thread::sleep(std::time::Duration::from_millis(16)); // ~60 FPS
     }

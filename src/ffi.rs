@@ -106,6 +106,23 @@ unsafe extern "C" {
         imp: extern "C" fn(),
         types: *const c_char,
     ) -> bool;
+    pub fn class_addIvar(
+        cls: Class,
+        name: *const c_char,
+        size: usize,
+        alignment: u8,
+        types: *const c_char,
+    ) -> bool;
+    pub fn object_setInstanceVariable(
+        obj: id,
+        name: *const c_char,
+        value: *mut std::ffi::c_void,
+    ) -> *mut std::ffi::c_void;
+    pub fn object_getInstanceVariable(
+        obj: id,
+        name: *const c_char,
+        out_val: *mut *mut std::ffi::c_void,
+    ) -> *mut std::ffi::c_void;
     pub fn objc_registerClassPair(cls: Class);
 }
 

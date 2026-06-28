@@ -4,6 +4,11 @@ use crate::event::*;
 use crate::ffi::*;
 use crate::objc::*;
 
+thread_local! {
+    static REPAINT_CALLBACK: std::cell::Cell<Option<*mut std::ffi::c_void>> = std::cell::Cell::new(None);
+    static REPAINT_FUNC: std::cell::Cell<Option<unsafe fn(*mut std::ffi::c_void, &mut crate::window::Window, usize, usize)>> = std::cell::Cell::new(None);
+}
+
 pub struct EventLoop {
     pub ns_app: id,
     _marker: std::marker::PhantomData<*mut ()>,
@@ -20,9 +25,16 @@ impl EventLoop {
             );
 
             let set_policy_sel = sel_registerName(b"setActivationPolicy:\0".as_ptr() as *const _);
-            let set_policy: unsafe extern "C" fn(id, SEL, NSApplicationActivationPolicy) -> BOOL =
-                std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
-            set_policy(ns_app, set_policy_sel, NSApplicationActivationPolicyRegular);
+            let set_policy: unsafe extern "C" fn(
+                id,
+                SEL,
+                NSApplicationActivationPolicy,
+            ) -> BOOL = std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+            set_policy(
+                ns_app,
+                set_policy_sel,
+                NSApplicationActivationPolicyRegular,
+            );
 
             // Register delegate class
             register_delegate_class();
@@ -48,7 +60,10 @@ impl EventLoop {
             let init_sel = sel_registerName(b"init\0".as_ptr() as *const _);
 
             let main_menu = msg_send_id(
-                msg_send_id(objc_getClass(b"NSMenu\0".as_ptr() as *const _), alloc_sel),
+                msg_send_id(
+                    objc_getClass(b"NSMenu\0".as_ptr() as *const _),
+                    alloc_sel,
+                ),
                 init_sel,
             );
 
@@ -67,7 +82,10 @@ impl EventLoop {
             );
 
             let app_menu = msg_send_id(
-                msg_send_id(objc_getClass(b"NSMenu\0".as_ptr() as *const _), alloc_sel),
+                msg_send_id(
+                    objc_getClass(b"NSMenu\0".as_ptr() as *const _),
+                    alloc_sel,
+                ),
                 init_sel,
             );
 
@@ -109,9 +127,23 @@ impl EventLoop {
         }
     }
 
-    pub fn poll_events(&self) -> Vec<Event> {
+    pub fn poll_events<F>(&self, mut repaint: F) -> Vec<Event>
+    where
+        F: FnMut(&mut crate::window::Window, usize, usize),
+    {
         #[cfg(debug_assertions)]
         assert_main_thread();
+
+        // Store the closure in thread-local storage
+        let repaint_ptr = &mut repaint as *mut F as *mut std::ffi::c_void;
+        let repaint_func = |ptr: *mut std::ffi::c_void, window: &mut crate::window::Window, w: usize, h: usize| unsafe {
+            let f = &mut *(ptr as *mut F);
+            f(window, w, h);
+        };
+
+        REPAINT_CALLBACK.with(|c| c.set(Some(repaint_ptr)));
+        REPAINT_FUNC.with(|f| f.set(Some(repaint_func)));
+
         let mut events = Vec::new();
         unsafe {
             // Allocate an autorelease pool for this tick
@@ -169,6 +201,10 @@ impl EventLoop {
             msg_send_id(pool, sel_registerName(b"drain\0".as_ptr() as *const _));
         }
 
+        // Clear thread-local storage
+        REPAINT_CALLBACK.with(|c| c.set(None));
+        REPAINT_FUNC.with(|f| f.set(None));
+
         // Append any events captured by the delegate callbacks (like close/resize)
         events.extend(pop_all_events());
         events
@@ -213,8 +249,10 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                 let x = loc.x;
                 let mut y = loc.y;
 
-                let window =
-                    msg_send_id(ns_event, sel_registerName(b"window\0".as_ptr() as *const _));
+                let window = msg_send_id(
+                    ns_event,
+                    sel_registerName(b"window\0".as_ptr() as *const _),
+                );
                 if !window.is_null() {
                     let content_view = msg_send_id(
                         window,
@@ -226,12 +264,17 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                 }
 
                 let button = match event_type {
-                    NSEventTypeLeftMouseDown | NSEventTypeLeftMouseUp => MouseButton::Left,
-                    NSEventTypeRightMouseDown | NSEventTypeRightMouseUp => MouseButton::Right,
+                    NSEventTypeLeftMouseDown | NSEventTypeLeftMouseUp => {
+                        MouseButton::Left
+                    }
+                    NSEventTypeRightMouseDown | NSEventTypeRightMouseUp => {
+                        MouseButton::Right
+                    }
                     _ => MouseButton::Left,
                 };
 
-                if event_type == NSEventTypeLeftMouseDown || event_type == NSEventTypeRightMouseDown
+                if event_type == NSEventTypeLeftMouseDown
+                    || event_type == NSEventTypeRightMouseDown
                 {
                     Some(Event::MouseDown {
                         button,
@@ -257,8 +300,10 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                 let x = loc.x;
                 let mut y = loc.y;
 
-                let window =
-                    msg_send_id(ns_event, sel_registerName(b"window\0".as_ptr() as *const _));
+                let window = msg_send_id(
+                    ns_event,
+                    sel_registerName(b"window\0".as_ptr() as *const _),
+                );
                 if !window.is_null() {
                     let content_view = msg_send_id(
                         window,
@@ -279,8 +324,10 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                 let x = loc.x;
                 let mut y = loc.y;
 
-                let window =
-                    msg_send_id(ns_event, sel_registerName(b"window\0".as_ptr() as *const _));
+                let window = msg_send_id(
+                    ns_event,
+                    sel_registerName(b"window\0".as_ptr() as *const _),
+                );
                 if !window.is_null() {
                     let content_view = msg_send_id(
                         window,
@@ -326,7 +373,11 @@ pub fn register_delegate_class() -> Class {
     let mut cls = std::ptr::null_mut();
     REGISTER_DELEGATE.call_once(|| unsafe {
         let superclass = objc_getClass(b"NSObject\0".as_ptr() as *const _);
-        cls = objc_allocateClassPair(superclass, b"RustWindowDelegate\0".as_ptr() as *const _, 0);
+        cls = objc_allocateClassPair(
+            superclass,
+            b"RustWindowDelegate\0".as_ptr() as *const _,
+            0,
+        );
 
         class_addMethod(
             cls,
@@ -376,6 +427,20 @@ extern "C" fn window_did_resize(_this: id, _cmd: SEL, notification: id) {
 
         let physical_width = (frame.size.width * scale) as usize;
         let physical_height = (frame.size.height * scale) as usize;
+
+        // Retrieve and execute the repaint closure via thread-locals
+        let callback_opt = REPAINT_CALLBACK.with(|c| c.get());
+        let func_opt = REPAINT_FUNC.with(|f| f.get());
+
+        if let (Some(ptr), Some(func)) = (callback_opt, func_opt) {
+            let delegate = msg_send_id(window, sel_registerName(b"delegate\0".as_ptr() as *const _));
+            let mut temp_window = std::mem::ManuallyDrop::new(crate::window::Window::from_raw(
+                window,
+                content_view,
+                delegate,
+            ));
+            func(ptr, &mut temp_window, physical_width, physical_height);
+        }
 
         push_event(Event::Resized {
             width: frame.size.width,
