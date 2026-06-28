@@ -77,8 +77,9 @@ impl Window {
                     NSApplicationActivationPolicyRegular,
                 );
 
-                // Register delegate class
+                // Register delegate and view classes
                 register_delegate_class();
+                register_view_class();
 
                 // Setup menu bar
                 let alloc_sel = sel_registerName(b"alloc\0".as_ptr() as *const _);
@@ -239,7 +240,8 @@ impl Window {
                 title_ns,
             );
 
-            let view_class = objc_getClass(b"NSView\0".as_ptr() as *const _);
+            // Instantiate our custom RustView class
+            let view_class = register_view_class();
             let view_alloc = msg_send_id(view_class, alloc_sel);
             let init_view_func: unsafe extern "C" fn(id, SEL, NSRect) -> id =
                 std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
@@ -808,21 +810,6 @@ pub fn register_delegate_class() -> Class {
             b"v@:@\0".as_ptr() as *const _,
         );
 
-        // Bind drag-and-drop destination delegate methods
-        class_addMethod(
-            cls,
-            sel_registerName(b"draggingEntered:\0".as_ptr() as *const _),
-            std::mem::transmute(dragging_entered as *const std::ffi::c_void),
-            b"Q@:@\0".as_ptr() as *const _,
-        );
-
-        class_addMethod(
-            cls,
-            sel_registerName(b"performDragOperation:\0".as_ptr() as *const _),
-            std::mem::transmute(perform_drag_operation as *const std::ffi::c_void),
-            b"c@:@\0".as_ptr() as *const _,
-        );
-
         objc_registerClassPair(cls);
     });
     if cls.is_null() {
@@ -878,6 +865,42 @@ extern "C" fn window_did_resize(_this: id, _cmd: SEL, notification: id) {
             physical_width,
             physical_height,
         });
+    }
+}
+
+static REGISTER_VIEW: std::sync::Once = std::sync::Once::new();
+
+pub fn register_view_class() -> Class {
+    let mut cls = std::ptr::null_mut();
+    REGISTER_VIEW.call_once(|| unsafe {
+        let superclass = objc_getClass(b"NSView\0".as_ptr() as *const _);
+        cls = objc_allocateClassPair(
+            superclass,
+            b"RustView\0".as_ptr() as *const _,
+            0,
+        );
+
+        // Bind drag-and-drop destination methods directly to our custom view class
+        class_addMethod(
+            cls,
+            sel_registerName(b"draggingEntered:\0".as_ptr() as *const _),
+            std::mem::transmute(dragging_entered as *const std::ffi::c_void),
+            b"Q@:@\0".as_ptr() as *const _,
+        );
+
+        class_addMethod(
+            cls,
+            sel_registerName(b"performDragOperation:\0".as_ptr() as *const _),
+            std::mem::transmute(perform_drag_operation as *const std::ffi::c_void),
+            b"c@:@\0".as_ptr() as *const _,
+        );
+
+        objc_registerClassPair(cls);
+    });
+    if cls.is_null() {
+        unsafe { objc_getClass(b"RustView\0".as_ptr() as *const _) }
+    } else {
+        cls
     }
 }
 
