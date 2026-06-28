@@ -67,7 +67,8 @@ pub unsafe fn nsstring(s: &str) -> id {
 pub unsafe fn msg_send_rect(obj: id, sel: SEL) -> NSRect {
     unsafe {
         let mut rect = std::mem::zeroed();
-        let func: unsafe extern "C" fn(*mut NSRect, id, SEL) = transmute(crate::ffi::objc_msgSend_stret as *const c_void);
+        let func: unsafe extern "C" fn(*mut NSRect, id, SEL) =
+            transmute(crate::ffi::objc_msgSend_stret as *const c_void);
         func(&mut rect, obj, sel);
         rect
     }
@@ -76,7 +77,8 @@ pub unsafe fn msg_send_rect(obj: id, sel: SEL) -> NSRect {
 #[cfg(not(target_arch = "x86_64"))]
 pub unsafe fn msg_send_rect(obj: id, sel: SEL) -> NSRect {
     unsafe {
-        let func: unsafe extern "C" fn(id, SEL) -> NSRect = transmute(objc_msgSend as *const c_void);
+        let func: unsafe extern "C" fn(id, SEL) -> NSRect =
+            transmute(objc_msgSend as *const c_void);
         func(obj, sel)
     }
 }

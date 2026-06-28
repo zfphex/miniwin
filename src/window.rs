@@ -19,6 +19,7 @@ pub struct Window {
     pub ns_window: id,
     pub ns_view: id,
     pub ns_delegate: id,
+    _marker: std::marker::PhantomData<*mut ()>,
 }
 
 impl Window {
@@ -29,6 +30,8 @@ impl Window {
         style: WindowStyle,
         fullscreen: FullscreenMode,
     ) -> Self {
+        #[cfg(debug_assertions)]
+        crate::event_loop::assert_main_thread();
         unsafe {
             let alloc_sel = ffi::sel_registerName(b"alloc\0".as_ptr() as *const _);
 
@@ -145,16 +148,27 @@ impl Window {
 
             // Create and set delegate
             let delegate_class = crate::event_loop::register_delegate_class();
-            let delegate_alloc = objc::msg_send_id(delegate_class, ffi::sel_registerName(b"alloc\0".as_ptr() as *const _));
-            let ns_delegate = objc::msg_send_id(delegate_alloc, ffi::sel_registerName(b"init\0".as_ptr() as *const _));
-            
+            let delegate_alloc = objc::msg_send_id(
+                delegate_class,
+                ffi::sel_registerName(b"alloc\0".as_ptr() as *const _),
+            );
+            let ns_delegate = objc::msg_send_id(
+                delegate_alloc,
+                ffi::sel_registerName(b"init\0".as_ptr() as *const _),
+            );
+
             objc::msg_send_id_id_void(
                 ns_window,
                 ffi::sel_registerName(b"setDelegate:\0".as_ptr() as *const _),
                 ns_delegate,
             );
 
-            Window { ns_window, ns_view, ns_delegate }
+            Window {
+                ns_window,
+                ns_view,
+                ns_delegate,
+                _marker: std::marker::PhantomData,
+            }
         }
     }
 
@@ -174,17 +188,17 @@ impl Window {
             let boxed_pixels = pixels.to_vec();
             let data_ptr = boxed_pixels.as_ptr() as *const std::ffi::c_void;
             std::mem::forget(boxed_pixels);
-            
+
             let provider = ffi::CGDataProviderCreateWithData(
                 std::ptr::null_mut(),
                 data_ptr,
                 size,
                 Some(release_provider_data),
             );
-            
+
             let color_space = ffi::CGColorSpaceCreateDeviceRGB();
             let bitmap_info = ffi::kCGImageAlphaNoneSkipFirst | ffi::kCGBitmapByteOrder32Little;
-            
+
             let cg_image = ffi::CGImageCreate(
                 width,
                 height,
@@ -198,13 +212,13 @@ impl Window {
                 false,
                 0,
             );
-            
+
             let layer_sel = ffi::sel_registerName(b"layer\0".as_ptr() as *const _);
             let layer = objc::msg_send_id(self.ns_view, layer_sel);
-            
+
             let set_contents_sel = ffi::sel_registerName(b"setContents:\0".as_ptr() as *const _);
             objc::msg_send_id_id_void(layer, set_contents_sel, cg_image as id);
-            
+
             ffi::CFRelease(cg_image as ffi::CFTypeRef);
             ffi::CFRelease(provider as ffi::CFTypeRef);
             ffi::CFRelease(color_space as ffi::CFTypeRef);
@@ -217,6 +231,33 @@ impl Window {
             let scale_func: unsafe extern "C" fn(id, ffi::SEL) -> f64 =
                 std::mem::transmute(ffi::objc_msgSend as *const std::ffi::c_void);
             scale_func(self.ns_window, scale_sel)
+        }
+    }
+}
+
+impl Drop for Window {
+    fn drop(&mut self) {
+        #[cfg(debug_assertions)]
+        crate::event_loop::assert_main_thread();
+        unsafe {
+            objc::msg_send_id_id_void(
+                self.ns_window,
+                ffi::sel_registerName(b"setDelegate:\0".as_ptr() as *const _),
+                ffi::nil,
+            );
+            objc::msg_send_id_bool_void(
+                self.ns_window,
+                ffi::sel_registerName(b"setReleasedWhenClosed:\0".as_ptr() as *const _),
+                ffi::YES,
+            );
+            objc::msg_send_id(
+                self.ns_window,
+                ffi::sel_registerName(b"close\0".as_ptr() as *const _),
+            );
+            objc::msg_send_id(
+                self.ns_delegate,
+                ffi::sel_registerName(b"release\0".as_ptr() as *const _),
+            );
         }
     }
 }

@@ -129,7 +129,9 @@ unsafe extern "C" {
         info: *mut std::ffi::c_void,
         data: *const std::ffi::c_void,
         size: usize,
-        releaseData: Option<unsafe extern "C" fn(*mut std::ffi::c_void, *const std::ffi::c_void, usize)>,
+        releaseData: Option<
+            unsafe extern "C" fn(*mut std::ffi::c_void, *const std::ffi::c_void, usize),
+        >,
     ) -> CGDataProviderRef;
     pub fn CGImageCreate(
         width: usize,

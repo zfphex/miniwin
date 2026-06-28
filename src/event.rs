@@ -36,13 +36,42 @@ pub enum Event {
         physical_width: usize,
         physical_height: usize,
     },
-    KeyDown { keycode: u16, modifiers: Modifiers },
-    KeyUp { keycode: u16, modifiers: Modifiers },
-    MouseDown { button: MouseButton, x: f64, y: f64, modifiers: Modifiers },
-    MouseUp { button: MouseButton, x: f64, y: f64, modifiers: Modifiers },
-    MouseMoved { x: f64, y: f64, modifiers: Modifiers },
-    MouseDragged { button: MouseButton, x: f64, y: f64, modifiers: Modifiers },
-    Scroll { delta_x: f64, delta_y: f64, modifiers: Modifiers },
+    KeyDown {
+        keycode: u16,
+        modifiers: Modifiers,
+    },
+    KeyUp {
+        keycode: u16,
+        modifiers: Modifiers,
+    },
+    MouseDown {
+        button: MouseButton,
+        x: f64,
+        y: f64,
+        modifiers: Modifiers,
+    },
+    MouseUp {
+        button: MouseButton,
+        x: f64,
+        y: f64,
+        modifiers: Modifiers,
+    },
+    MouseMoved {
+        x: f64,
+        y: f64,
+        modifiers: Modifiers,
+    },
+    MouseDragged {
+        button: MouseButton,
+        x: f64,
+        y: f64,
+        modifiers: Modifiers,
+    },
+    Scroll {
+        delta_x: f64,
+        delta_y: f64,
+        modifiers: Modifiers,
+    },
 }
 
 thread_local! {
