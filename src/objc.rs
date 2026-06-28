@@ -1,6 +1,4 @@
-#![allow(dead_code)]
-
-use crate::ffi::{BOOL, NSRect, SEL, id, objc_msgSend};
+use crate::ffi::*;
 use std::mem::transmute;
 use std::os::raw::c_void;
 
@@ -51,10 +49,9 @@ pub unsafe fn msg_send_id_rect_void(obj: id, sel: SEL, rect: NSRect) {
 // Convert a Rust string to a Cocoa NSString (retaining pointer)
 pub unsafe fn nsstring(s: &str) -> id {
     unsafe {
-        let nsstring_class = crate::ffi::objc_getClass(b"NSString\0".as_ptr() as *const _);
-        let alloc_sel = crate::ffi::sel_registerName(b"alloc\0".as_ptr() as *const _);
-        let init_sel =
-            crate::ffi::sel_registerName(b"initWithBytes:length:encoding:\0".as_ptr() as *const _);
+        let nsstring_class = objc_getClass(b"NSString\0".as_ptr() as *const _);
+        let alloc_sel = sel_registerName(b"alloc\0".as_ptr() as *const _);
+        let init_sel = sel_registerName(b"initWithBytes:length:encoding:\0".as_ptr() as *const _);
 
         let allocated = msg_send_id(nsstring_class, alloc_sel);
         let init_func: unsafe extern "C" fn(id, SEL, *const c_void, usize, usize) -> id =
@@ -68,7 +65,7 @@ pub unsafe fn msg_send_rect(obj: id, sel: SEL) -> NSRect {
     unsafe {
         let mut rect = std::mem::zeroed();
         let func: unsafe extern "C" fn(*mut NSRect, id, SEL) =
-            transmute(crate::ffi::objc_msgSend_stret as *const c_void);
+            transmute(objc_msgSend_stret as *const c_void);
         func(&mut rect, obj, sel);
         rect
     }
