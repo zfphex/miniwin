@@ -1,7 +1,7 @@
 #![allow(non_upper_case_globals)]
 
 use crate::event::*;
-use crate::common::*;
+use *;
 use crate::ffi::*;
 use crate::objc::*;
 use crate::vsync::VsyncTracker;
@@ -318,7 +318,10 @@ impl Window {
         }
     }
 
-    pub fn update_buffer(&mut self, pixels: &[u32], width: usize, height: usize) {
+}
+
+impl crate::AppWindow for Window {
+    fn update_buffer(&mut self, pixels: &[u32], width: usize, height: usize) {
         unsafe {
             let size = pixels.len() * 4;
             let boxed_pixels = pixels.to_vec();
@@ -361,7 +364,7 @@ impl Window {
         }
     }
 
-    pub fn scale_factor(&self) -> f64 {
+    fn scale_factor(&self) -> f64 {
         unsafe {
             let sel = sel_registerName(b"backingScaleFactor\0".as_ptr() as *const _);
             let scale_func: unsafe extern "C" fn(id, SEL) -> f64 =
@@ -370,7 +373,7 @@ impl Window {
         }
     }
 
-    pub fn content_size(&self) -> (usize, usize) {
+    fn content_size(&self) -> (usize, usize) {
         unsafe {
             let frame_sel = sel_registerName(b"frame\0".as_ptr() as *const _);
             let frame = msg_send_rect(self.ns_view, frame_sel);
@@ -378,11 +381,11 @@ impl Window {
         }
     }
 
-    pub fn wait_for_vsync(&self) {
+    fn wait_for_vsync(&self) {
         self.vsync.wait_for_vsync();
     }
 
-    pub fn set_cursor_visible(&self, visible: bool) {
+    fn set_cursor_visible(&self, visible: bool) {
         unsafe {
             let ns_cursor = objc_getClass(b"NSCursor\0".as_ptr() as *const _);
             let sel = if visible {
@@ -394,13 +397,13 @@ impl Window {
         }
     }
 
-    pub fn set_cursor_grab(&self, grab: bool) {
+    fn set_cursor_grab(&self, grab: bool) {
         unsafe {
             CGAssociateMouseAndMouseCursorPosition(!grab);
         }
     }
 
-    pub fn set_cursor_icon(&self, icon: CursorIcon) {
+    fn set_cursor_icon(&self, icon: CursorIcon) {
         unsafe {
             let ns_cursor = objc_getClass(b"NSCursor\0".as_ptr() as *const _);
             let selector = match icon {
@@ -421,7 +424,7 @@ impl Window {
         }
     }
 
-    pub fn get_clipboard_text(&self) -> Option<String> {
+    fn get_clipboard_text(&self) -> Option<String> {
         unsafe {
             let pb_class = objc_getClass(b"NSPasteboard\0".as_ptr() as *const _);
             let pb = msg_send_id(pb_class, sel_registerName(b"generalPasteboard\0".as_ptr() as *const _));
@@ -449,7 +452,7 @@ impl Window {
         }
     }
 
-    pub fn set_clipboard_text(&self, text: &str) {
+    fn set_clipboard_text(&self, text: &str) {
         unsafe {
             let pb_class = objc_getClass(b"NSPasteboard\0".as_ptr() as *const _);
             let pb = msg_send_id(pb_class, sel_registerName(b"generalPasteboard\0".as_ptr() as *const _));
@@ -468,7 +471,7 @@ impl Window {
         }
     }
 
-    pub fn draw<F>(&mut self, mut render: F)
+    fn draw<F>(&mut self, mut render: F)
     where
         F: FnMut(&mut Self),
     {
@@ -556,10 +559,13 @@ impl Window {
         self.event_queue.extend(crate::macos::event::pop_all_events());
     }
 
-    pub fn event(&mut self) -> Option<Event> {
+    fn event(&mut self) -> Option<Event> {
         self.event_queue.pop_front()
     }
 
+}
+
+impl Window {
     pub(crate) unsafe fn from_raw(ns_window: id, ns_view: id, ns_delegate: id) -> Self {
         Window {
             ns_window,

@@ -4,7 +4,7 @@ fn main() {
     println!("Initializing Window...");
     // Unified window creation for both platforms
     let mut window = create_window(
-        "Stage 7 Feature Demo",
+        "Demo",
         0,
         0, // Default position
         800,

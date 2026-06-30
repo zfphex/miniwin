@@ -362,7 +362,11 @@ impl Window {
 
     pub fn borderless(&mut self) {
         unsafe {
-            SetWindowLongPtrA(self.hwnd, GWL_STYLE, get_style_flags(crate::common::WindowStyle::Borderless).0 as isize);
+            SetWindowLongPtrA(
+                self.hwnd,
+                GWL_STYLE,
+                get_style_flags(WindowStyle::Borderless).0 as isize,
+            );
 
             //Update the window area without moving or resizing it.
             SetWindowPos(
@@ -384,7 +388,7 @@ impl Window {
             monitor_info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
             assert!(GetMonitorInfoA(monitor, &mut monitor_info) != 0);
 
-            let style = get_style_flags(crate::common::WindowStyle::Borderless).0 | WS_MAXIMIZE;
+            let style = get_style_flags(WindowStyle::Borderless).0 | WS_MAXIMIZE;
             SetWindowLongPtrA(self.hwnd, GWL_STYLE, style as isize);
 
             let x = monitor_info.rcMonitor.left;
@@ -412,7 +416,11 @@ impl Window {
 
     pub fn reset_style(&mut self) {
         unsafe {
-            SetWindowLongPtrA(self.hwnd, GWL_STYLE, get_style_flags(crate::common::WindowStyle::Standard).0 as isize);
+            SetWindowLongPtrA(
+                self.hwnd,
+                GWL_STYLE,
+                get_style_flags(WindowStyle::Standard).0 as isize,
+            );
 
             //Update the window area without moving or resizing it.
             SetWindowPos(
@@ -449,7 +457,29 @@ impl Window {
         return None;
     }
 
-    pub fn event(&mut self) -> Option<Event> {
+    pub fn present(&mut self) {
+        unsafe {
+            StretchDIBits(
+                self.dc,
+                0,
+                0,
+                self.area.width as i32,
+                self.area.height as i32,
+                0,
+                0,
+                self.area.width as i32,
+                self.area.height as i32,
+                self.buffer.as_mut_ptr() as *const c_void,
+                &self.bitmap,
+                0,
+                SRCCOPY,
+            );
+        }
+    }
+}
+
+impl crate::Window for Window {
+    fn event(&mut self) -> Option<Event> {
         if self.needs_frame_advance {
             self.input.advance_frame();
             self.needs_frame_advance = false;
@@ -460,7 +490,7 @@ impl Window {
         None
     }
 
-    pub fn draw<F>(&mut self, mut render: F)
+    fn draw<F>(&mut self, mut render: F)
     where
         F: FnMut(&mut Self),
     {
@@ -495,31 +525,11 @@ impl Window {
         self.needs_frame_advance = true;
     }
 
-    pub fn present(&mut self) {
-        unsafe {
-            StretchDIBits(
-                self.dc,
-                0,
-                0,
-                self.area.width as i32,
-                self.area.height as i32,
-                0,
-                0,
-                self.area.width as i32,
-                self.area.height as i32,
-                self.buffer.as_mut_ptr() as *const c_void,
-                &self.bitmap,
-                0,
-                SRCCOPY,
-            );
-        }
+    fn wait_for_vsync(&self) {
+        unsafe { DwmFlush() };
     }
 
-    pub fn wait_for_vsync(&self) {
-        unsafe { crate::windows::fps::DwmFlush() };
-    }
-
-    pub fn update_buffer(&mut self, pixels: &[u32], width: usize, height: usize) {
+    fn update_buffer(&mut self, pixels: &[u32], width: usize, height: usize) {
         if self.buffer.len() != pixels.len() {
             self.buffer.resize(pixels.len(), 0);
         }
@@ -527,28 +537,34 @@ impl Window {
         self.present();
     }
 
-    pub fn scale_factor(&self) -> f64 {
+    fn scale_factor(&self) -> f64 {
         self.display_scale as f64
     }
 
-    pub fn content_size(&self) -> (usize, usize) {
+    fn content_size(&self) -> (usize, usize) {
         let rect = self.client_area();
         (rect.width, rect.height)
     }
 
-    pub fn set_cursor_visible(&self, visible: bool) {
+    fn set_cursor_visible(&self, visible: bool) {
         unsafe {
             ShowCursor(if visible { 1 } else { 0 });
         }
     }
 
-    pub fn set_cursor_grab(&self, grab: bool) {
+    fn set_cursor_grab(&self, grab: bool) {
         unsafe {
             if grab {
                 let mut rect = RECT::default();
                 GetClientRect(self.hwnd, &mut rect);
-                let mut pt_top_left = POINT { x: rect.left, y: rect.top };
-                let mut pt_bottom_right = POINT { x: rect.right, y: rect.bottom };
+                let mut pt_top_left = POINT {
+                    x: rect.left,
+                    y: rect.top,
+                };
+                let mut pt_bottom_right = POINT {
+                    x: rect.right,
+                    y: rect.bottom,
+                };
                 ClientToScreen(self.hwnd, &mut pt_top_left);
                 ClientToScreen(self.hwnd, &mut pt_bottom_right);
                 rect.left = pt_top_left.x;
@@ -562,7 +578,7 @@ impl Window {
         }
     }
 
-    pub fn set_cursor_icon(&self, icon: CursorIcon) {
+    fn set_cursor_icon(&self, icon: CursorIcon) {
         let idc = match icon {
             CursorIcon::Arrow => IDC_ARROW,
             CursorIcon::IBeam => IDC_IBEAM,
@@ -577,15 +593,15 @@ impl Window {
         }
     }
 
-    pub fn get_clipboard_text(&self) -> Option<String> {
+    fn get_clipboard_text(&self) -> Option<String> {
         unsafe {
-            if crate::windows::clipboard::OpenClipboard(self.hwnd) == 0 {
+            if OpenClipboard(self.hwnd) == 0 {
                 return None;
             }
-            let handle = crate::windows::clipboard::GetClipboardData(crate::windows::clipboard::CF_TEXT);
+            let handle = GetClipboardData(CF_TEXT);
             let mut result = None;
             if !handle.is_null() {
-                let ptr = crate::windows::clipboard::GlobalLock(handle) as *const u8;
+                let ptr = GlobalLock(handle) as *const u8;
                 if !ptr.is_null() {
                     let mut len = 0;
                     while *ptr.add(len) != 0 {
@@ -594,29 +610,26 @@ impl Window {
                     if let Ok(s) = std::str::from_utf8(std::slice::from_raw_parts(ptr, len)) {
                         result = Some(s.to_string());
                     }
-                    crate::windows::clipboard::GlobalUnlock(handle);
+                    GlobalUnlock(handle);
                 }
             }
-            crate::windows::clipboard::CloseClipboard();
+            CloseClipboard();
             result
         }
     }
 
-    pub fn set_clipboard_text(&self, text: &str) {
-        crate::windows::clipboard::copy_to_clipboard(text);
+    fn set_clipboard_text(&self, text: &str) {
+        copy_to_clipboard(text);
     }
 }
 
-pub fn get_style_flags(style: crate::common::WindowStyle) -> (u32, u32) {
+pub fn get_style_flags(style: WindowStyle) -> (u32, u32) {
     match style {
-        crate::common::WindowStyle::Standard => (
+        WindowStyle::Standard => (
             WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_VISIBLE,
             0,
         ),
-        crate::common::WindowStyle::Borderless | crate::common::WindowStyle::Transparent => (
-            WS_POPUP | WS_VISIBLE,
-            0,
-        ),
+        WindowStyle::Borderless | WindowStyle::Transparent => (WS_POPUP | WS_VISIBLE, 0),
     }
 }
 
