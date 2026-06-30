@@ -94,7 +94,8 @@ extern "system" {
         nBytes: u32,
         ppfd: *mut PIXELFORMATDESCRIPTOR,
     ) -> i32;
-    pub fn SetPixelFormat(hdc: *mut c_void, format: i32, ppfd: *const PIXELFORMATDESCRIPTOR) -> i32;
+    pub fn SetPixelFormat(hdc: *mut c_void, format: i32, ppfd: *const PIXELFORMATDESCRIPTOR)
+        -> i32;
     pub fn SwapBuffers(hdc: *mut c_void) -> i32;
     pub fn StretchDIBits(
         hdc: *mut c_void,

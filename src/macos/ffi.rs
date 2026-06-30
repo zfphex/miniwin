@@ -189,4 +189,3 @@ unsafe extern "C" {
 unsafe extern "C" {
     pub fn CGAssociateMouseAndMouseCursorPosition(connected: bool) -> i32;
 }
-

@@ -1,6 +1,5 @@
+use crate::*;
 use std::cell::RefCell;
-
-use Event;
 
 thread_local! {
     static EVENT_QUEUE: RefCell<Vec<Event>> = const { RefCell::new(Vec::new()) };

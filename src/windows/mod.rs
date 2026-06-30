@@ -5,9 +5,9 @@
     unused_variables
 )]
 
+use crate::*;
 pub use core::ffi::c_void;
 pub use core::ptr::{null, null_mut};
-use crate::*;
 
 mod clipboard;
 mod constants;
@@ -195,7 +195,7 @@ pub struct POINT {
 
 impl Rect {
     pub const fn from_windows(rect: RECT) -> Rect {
-      Rect {
+        Rect {
             x: 0,
             y: 0,
             width: (rect.right - rect.left) as usize,

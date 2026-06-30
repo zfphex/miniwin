@@ -73,7 +73,7 @@ pub fn create_tray_icon(hwnd: isize, tray_id: u32, icon_handle: *mut c_void, too
         nid.hwnd = hwnd;
         nid.u_id = tray_id;
         nid.u_flags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
-        nid.u_callback_message = WM_TRAYICON; 
+        nid.u_callback_message = WM_TRAYICON;
         nid.h_icon = icon_handle;
 
         // Copy tooltip (null-terminated, max 127 chars)
