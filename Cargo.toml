@@ -1,13 +1,6 @@
 [package]
 name = "miniwin"
 version = "0.1.0"
-edition = "2021"
-
-[features]
-profile = ["mini/profile"]
-info = ["mini/info"]
-warn = ["mini/warn"]
-error = ["mini/error"]
+edition = "2021" # 😮😮😮😮😮 CLANKER DETECTED !!!! Please go touch grass.
 
 [dependencies]
-mini = { git = "https://github.com/zx3no/mini", version = "0.1.0" }

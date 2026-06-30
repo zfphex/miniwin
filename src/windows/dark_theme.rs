@@ -8,7 +8,7 @@ pub unsafe fn set_dark_theme(hwnd: isize) {
     #[repr(C)]
     struct WINDOWCOMPOSITIONATTRIBDATA {
         attrib: u32,
-        data: *mut core::ffi::c_void,
+        data: *mut std::ffi::c_void,
         size: usize,
     }
 
@@ -27,7 +27,7 @@ pub unsafe fn set_dark_theme(hwnd: isize) {
         fn RtlGetVersion(version: *mut OSVERSIONINFOW) -> i32;
     }
 
-    let mut v: OSVERSIONINFOW = unsafe { core::mem::zeroed() };
+    let mut v: OSVERSIONINFOW = unsafe { std::mem::zeroed() };
     let status = unsafe { RtlGetVersion(&mut v) };
 
     //Check if this version of windows supports `SetWindowCompositionAttribute`.
@@ -44,7 +44,7 @@ pub unsafe fn set_dark_theme(hwnd: isize) {
         )
     };
     let SetWindow: fn(isize, *mut WINDOWCOMPOSITIONATTRIBDATA) -> i32 =
-        unsafe { core::mem::transmute(proc) };
+        unsafe { std::mem::transmute(proc) };
 
     //This must be mutable.
     let mut theme: i32 = DARK_MODE;

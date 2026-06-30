@@ -1,4 +1,4 @@
-use core::ffi::c_void;
+use std::ffi::c_void;
 
 pub fn copy_to_clipboard(text: &str) {
     const GMEM_MOVEABLE: u32 = 0x0002;
@@ -14,7 +14,7 @@ pub fn copy_to_clipboard(text: &str) {
         let glock = GlobalLock(galloc) as *mut u8;
         assert!(!glock.is_null());
 
-        core::ptr::copy_nonoverlapping(text.as_ptr(), glock, text.len());
+        std::ptr::copy_nonoverlapping(text.as_ptr(), glock, text.len());
         *glock.add(text.len()) = 0;
 
         GlobalUnlock(galloc);

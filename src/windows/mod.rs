@@ -6,8 +6,8 @@
 )]
 
 use crate::*;
-pub use core::ffi::c_void;
-pub use core::ptr::{null, null_mut};
+pub use std::ffi::c_void;
+pub use std::ptr::{null, null_mut};
 
 mod clipboard;
 mod constants;
@@ -51,8 +51,8 @@ extern "system" {
 
 #[link(name = "Opengl32")]
 extern "system" {
-    pub fn wglCreateContext(hdc: *mut core::ffi::c_void) -> HGLRC;
-    pub fn wglMakeCurrent(hdc: *mut core::ffi::c_void, hglrc: HGLRC) -> i32;
+    pub fn wglCreateContext(hdc: *mut std::ffi::c_void) -> HGLRC;
+    pub fn wglMakeCurrent(hdc: *mut std::ffi::c_void, hglrc: HGLRC) -> i32;
     pub fn wglGetProcAddress(name: *const i8) -> *const c_void;
 }
 
@@ -282,8 +282,8 @@ pub struct WNDCLASSA {
 
 pub fn accent_color() -> u32 {
     unsafe {
-        let mut color = core::mem::zeroed();
-        let mut blend = core::mem::zeroed();
+        let mut color = std::mem::zeroed();
+        let mut blend = std::mem::zeroed();
         assert!(DwmGetColorizationColor(&mut color, &mut blend) == 0);
         let r = (color & 0xFF) as u8;
         let g = ((color >> 8) & 0xFF) as u8;

@@ -28,7 +28,7 @@ pub fn create_window(
             //Prevent cursor from changing when loading.
             cursor: LoadCursorW(null_mut(), IDC_ARROW) as isize,
             background: 0,
-            menu_name: core::mem::zeroed(),
+            menu_name: std::mem::zeroed(),
             class_name: title.as_ptr() as *const u8,
         };
 
@@ -112,7 +112,7 @@ pub fn create_window(
             hglrc: null_mut(),
             focused: true,
             needs_frame_advance: false,
-            render_callback: core::ptr::null_mut(),
+            render_callback: std::ptr::null_mut(),
             render_executor: None,
             event_queue: VecDeque::new(),
         };
@@ -148,8 +148,8 @@ pub struct Window {
     pub hglrc: HGLRC,
     pub focused: bool,
     needs_frame_advance: bool,
-    pub render_callback: *mut core::ffi::c_void,
-    pub render_executor: Option<unsafe fn(*mut core::ffi::c_void, &mut Window)>,
+    pub render_callback: *mut std::ffi::c_void,
+    pub render_executor: Option<unsafe fn(*mut std::ffi::c_void, &mut Window)>,
     pub event_queue: VecDeque<Event>,
 }
 
@@ -158,7 +158,7 @@ impl Window {
         Self {
             hwnd: 0,
             display_scale: 1.0,
-            dc: unsafe { core::mem::zeroed() },
+            dc: unsafe { std::mem::zeroed() },
             buffer: Vec::new(),
             bitmap: BITMAPINFO {
                 header: BITMAPINFOHEADER {
@@ -201,10 +201,10 @@ impl Window {
             mouse_4: MouseButtonState::new(),
             mouse_5: MouseButtonState::new(),
             tray: MouseButtonState::new(),
-            hglrc: unsafe { core::mem::zeroed() },
+            hglrc: unsafe { std::mem::zeroed() },
             focused: false,
             needs_frame_advance: false,
-            render_callback: core::ptr::null_mut(),
+            render_callback: std::ptr::null_mut(),
             render_executor: None,
             event_queue: VecDeque::new(),
         }
@@ -212,7 +212,6 @@ impl Window {
 
     /// Safety: Mutiple calls to this is unsafe.
     pub unsafe fn init_wgl_debug(&mut self) {
-        mini::profile!();
         pub const WGL_CONTEXT_MAJOR_VERSION_ARB: i32 = 0x2091;
         pub const WGL_CONTEXT_MINOR_VERSION_ARB: i32 = 0x2092;
         pub const WGL_CONTEXT_FLAGS_ARB: i32 = 0x2094;
@@ -223,7 +222,7 @@ impl Window {
 
         unsafe {
             let mut pfd = PIXELFORMATDESCRIPTOR::default();
-            pfd.nSize = core::mem::size_of::<PIXELFORMATDESCRIPTOR>() as WORD;
+            pfd.nSize = std::mem::size_of::<PIXELFORMATDESCRIPTOR>() as WORD;
             pfd.nVersion = 1;
             pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
             pfd.iPixelType = PFD_TYPE_RGBA;
@@ -248,7 +247,7 @@ impl Window {
                 *mut c_void,
                 *const i32,
             )
-                -> *mut c_void = { core::mem::transmute(ptr) };
+                -> *mut c_void = { std::mem::transmute(ptr) };
 
             let attribs = [
                 WGL_CONTEXT_MAJOR_VERSION_ARB,
@@ -271,10 +270,9 @@ impl Window {
     }
 
     pub unsafe fn init_wgl(&mut self) {
-        mini::profile!();
         unsafe {
             let mut pfd = PIXELFORMATDESCRIPTOR::default();
-            pfd.nSize = core::mem::size_of::<PIXELFORMATDESCRIPTOR>() as WORD;
+            pfd.nSize = std::mem::size_of::<PIXELFORMATDESCRIPTOR>() as WORD;
             pfd.nVersion = 1;
             pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
             pfd.iPixelType = PFD_TYPE_RGBA;
@@ -301,7 +299,7 @@ impl Window {
     pub unsafe fn set_swap_interval(&self, interval: i32) {
         let ptr = unsafe { wglGetProcAddress("wglSwapIntervalEXT\0".as_ptr() as *const _) };
         assert!(!ptr.is_null());
-        let func: unsafe extern "system" fn(i32) -> i32 = unsafe { core::mem::transmute(ptr) };
+        let func: unsafe extern "system" fn(i32) -> i32 = unsafe { std::mem::transmute(ptr) };
         unsafe { func(interval) };
     }
 
@@ -523,7 +521,7 @@ impl crate::Window for Window {
             }
         }
 
-        self.render_callback = core::ptr::null_mut();
+        self.render_callback = std::ptr::null_mut();
         self.render_executor = None;
         self.needs_frame_advance = true;
     }
@@ -644,7 +642,7 @@ fn invoke_render_callback(window: &mut Window) {
     let cb_ptr = window.render_callback;
     let executor = window.render_executor;
 
-    window.render_callback = core::ptr::null_mut();
+    window.render_callback = std::ptr::null_mut();
     window.render_executor = None;
 
     if let Some(exec) = executor {
@@ -752,8 +750,6 @@ pub unsafe extern "system" fn wnd_proc(
             } else {
                 (original_width * scale, original_height * scale)
             };
-
-            mini::info!("Rescaling Window x: {}, y: {}, width: {}, height: {}, old_scale: {}, new_scale: {}", old.x, old.y, width.round(), height.round(), window.display_scale, scale);
 
             SetWindowPos(
                 hwnd,
