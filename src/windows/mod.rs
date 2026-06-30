@@ -305,3 +305,12 @@ pub const IDI_QUESTION: i32 = 32514;
 pub const IDI_EXCLAMATION: i32 = 32515;
 pub const IDI_ASTERISK: i32 = 32516;
 pub const IDI_WINLOGO: i32 = 32517;
+
+pub type HDROP = HANDLE;
+
+#[link(name = "shell32")]
+extern "system" {
+    pub fn DragAcceptFiles(hWnd: HWND, fAccept: BOOL);
+    pub fn DragQueryFileW(hDrop: HDROP, iFile: UINT, lpszFile: LPWSTR, cch: UINT) -> UINT;
+    pub fn DragFinish(hDrop: HDROP);
+}

@@ -66,6 +66,8 @@ pub fn create_window(
             null(),
         );
 
+        DragAcceptFiles(hwnd, 1);
+
         //Get the display scale factor 1.0, 1.25, 1.5, 1.75, can also be custom.
         let scale = GetDpiForWindow(hwnd) as f32 / DEFAULT_DPI;
         let mut area = get_client_rect(hwnd);
@@ -688,6 +690,24 @@ pub unsafe extern "system" fn wnd_proc(
         //We can choose not to destroy the window, for example with a save prompt.
         WM_CLOSE => {
             assert!(DestroyWindow(hwnd) != 0);
+            return 0;
+        }
+        WM_DROPFILES => {
+            let hdrop = wparam as HDROP;
+            let count = DragQueryFileW(hdrop, 0xFFFFFFFF, null_mut(), 0);
+            let mut files = Vec::new();
+            for i in 0..count {
+                let len = DragQueryFileW(hdrop, i, null_mut(), 0);
+                if len > 0 {
+                    let mut buf = vec![0u16; (len + 1) as usize];
+                    DragQueryFileW(hdrop, i, buf.as_mut_ptr(), len + 1);
+                    if let Ok(s) = String::from_utf16(&buf[..len as usize]) {
+                        files.push(std::path::PathBuf::from(s));
+                    }
+                }
+            }
+            DragFinish(hdrop);
+            window.event_queue.push_back(Event::DroppedFiles(files));
             return 0;
         }
         WM_DESTROY => {
