@@ -1,14 +1,5 @@
 use crate::*;
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum WinMouseButton {
-    Left,
-    Right,
-    Middle,
-    Mouse4,
-    Mouse5,
-}
-
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MouseButtonState {
     pub pressed: bool,

@@ -1,5 +1,3 @@
-use crate::windows::*;
-
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Key {
     Char(char),
@@ -31,9 +29,6 @@ pub enum Key {
 }
 
 impl Key {
-    // pub const fn into(self, modifiers: Modifiers) -> Option<Event> {
-    //     Some(Event::Input(self, modifiers))
-    // }
     pub const fn vk_code(&self) -> usize {
         match *self {
             Key::Enter => 0x0D,        // VK_RETURN
@@ -80,17 +75,6 @@ impl Key {
             Key::Function(n) if n >= 1 && n <= 24 => (0x6F + n) as usize,
             Key::Function(_) => 0,
             Key::Unknown(vk) => vk as usize,
-        }
-    }
-}
-
-pub fn modifiers() -> Modifiers {
-    unsafe {
-        Modifiers {
-            ctrl: GetKeyState(VK_CONTROL) & 0x80 > 0,
-            shift: GetKeyState(VK_SHIFT) & 0x80 > 0,
-            alt: GetKeyState(VK_MENU) & 0x80 > 0,
-            logo: GetKeyState(VK_LWIN) & 0x80 > 0 || GetKeyState(VK_RWIN) & 0x80 > 0,
         }
     }
 }

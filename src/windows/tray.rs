@@ -1,6 +1,5 @@
 use crate::*;
 
-/// Tray icon data structure
 #[repr(C)]
 struct NotifyIconData {
     cb_size: u32,
@@ -66,7 +65,6 @@ pub const NIIF_USER: u32 = 0x00000004;
 
 pub const WM_TRAYICON: u32 = WM_APP + 1;
 
-/// Create a new tray icon
 pub fn create_tray_icon(hwnd: isize, tray_id: u32, icon_handle: *mut c_void, tooltip: &str) {
     unsafe {
         let mut nid = NotifyIconData::new();
@@ -85,7 +83,6 @@ pub fn create_tray_icon(hwnd: isize, tray_id: u32, icon_handle: *mut c_void, too
     }
 }
 
-/// Remove a tray icon
 pub fn remove_tray_icon(hwnd: isize, tray_id: u32) {
     unsafe {
         let mut nid = NotifyIconData::new();

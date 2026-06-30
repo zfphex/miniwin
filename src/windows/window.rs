@@ -385,6 +385,7 @@ impl Window {
 
     pub fn fullscreen(&mut self) {
         unsafe {
+            const MONITOR_DEFAULTTOPRIMARY: u32 = 0x00000001;
             let monitor = MonitorFromWindow(self.hwnd, MONITOR_DEFAULTTOPRIMARY);
             let mut monitor_info: MONITORINFO = std::mem::zeroed();
             monitor_info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
@@ -693,7 +694,7 @@ pub unsafe extern "system" fn wnd_proc(
             return 0;
         }
         WM_DROPFILES => {
-            let hdrop = wparam as HDROP;
+            let hdrop = wparam as HANDLE;
             let count = DragQueryFileW(hdrop, 0xFFFFFFFF, null_mut(), 0);
             let mut files = Vec::new();
             for i in 0..count {

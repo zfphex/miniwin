@@ -12,29 +12,17 @@ pub use core::ptr::{null, null_mut};
 mod clipboard;
 mod constants;
 mod dark_theme;
-mod dwm;
 mod event;
-mod fps;
 mod gdi;
-mod global_input;
 mod input;
-mod monitor;
-mod tray;
-mod wgl;
 mod window;
 
 pub use clipboard::*;
 pub use constants::*;
 pub use dark_theme::*;
-pub use dwm::*;
 pub use event::*;
-pub use fps::*;
 pub use gdi::*;
-pub use global_input::*;
 pub use input::*;
-pub use monitor::*;
-pub use tray::*;
-pub use wgl::*;
 pub use window::*;
 
 pub type BYTE = u8;
@@ -54,6 +42,26 @@ pub type LONG = i32;
 pub type LPCSTR = *const i8;
 pub type LPCWSTR = *const u16;
 pub type LPWSTR = *mut u16;
+
+#[link(name = "dwmapi")]
+extern "system" {
+    pub fn DwmFlush() -> i32;
+    pub fn DwmGetColorizationColor(pcrColorization: *mut u32, pfOpaqueBlend: *mut i32) -> i32;
+}
+
+#[link(name = "Opengl32")]
+extern "system" {
+    pub fn wglCreateContext(hdc: *mut core::ffi::c_void) -> HGLRC;
+    pub fn wglMakeCurrent(hdc: *mut core::ffi::c_void, hglrc: HGLRC) -> i32;
+    pub fn wglGetProcAddress(name: *const i8) -> *const c_void;
+}
+
+#[link(name = "shell32")]
+extern "system" {
+    pub fn DragAcceptFiles(hWnd: HWND, fAccept: BOOL);
+    pub fn DragQueryFileW(hDrop: HANDLE, iFile: UINT, lpszFile: LPWSTR, cch: UINT) -> UINT;
+    pub fn DragFinish(hDrop: HANDLE);
+}
 
 #[link(name = "user32")]
 extern "system" {
@@ -164,6 +172,9 @@ extern "system" {
     pub fn MonitorFromWindow(hwnd: isize, dwFlags: u32) -> *mut c_void;
     pub fn ClipCursor(lpRect: *const RECT) -> i32;
     pub fn SetCursor(hCursor: *mut c_void) -> *mut c_void;
+    /// You must set the cbSize member of the structure to sizeof(MONITORINFO) or sizeof(MONITORINFOEX) before calling the GetMonitorInfo function.
+    /// Doing so lets the function determine the type of structure you are passing to it.
+    pub fn GetMonitorInfoA(hMonitor: *mut c_void, lpmi: *mut MONITORINFO) -> BOOL;
 }
 
 #[repr(C)]
@@ -269,48 +280,42 @@ pub struct WNDCLASSA {
     pub class_name: *const u8,
 }
 
-pub trait LowHighOrder {
-    fn low(self) -> Self;
-    fn high(self) -> Self;
-}
-
-impl LowHighOrder for usize {
-    #[inline]
-    fn low(self) -> Self {
-        self & 0xffff
-    }
-
-    #[inline]
-    fn high(self) -> Self {
-        (self >> 16) & 0xffff
+pub fn accent_color() -> u32 {
+    unsafe {
+        let mut color = core::mem::zeroed();
+        let mut blend = core::mem::zeroed();
+        assert!(DwmGetColorizationColor(&mut color, &mut blend) == 0);
+        let r = (color & 0xFF) as u8;
+        let g = ((color >> 8) & 0xFF) as u8;
+        let b = ((color >> 16) & 0xFF) as u8;
+        //bgr format instead of rgb for some reason.
+        (b as u32) << 16 | (g as u32) << 8 | (r as u32)
     }
 }
 
-impl LowHighOrder for u32 {
-    #[inline]
-    fn low(self) -> Self {
-        self & 0xffff
-    }
-
-    #[inline]
-    fn high(self) -> Self {
-        (self >> 16) & 0xffff
-    }
+#[inline]
+pub fn get_client_rect(hwnd: isize) -> Rect {
+    let mut rect = RECT::default();
+    let _ = unsafe { GetClientRect(hwnd, &mut rect) };
+    Rect::from_windows(rect)
 }
 
-// Icon resource identifiers
-pub const IDI_APPLICATION: i32 = 32512;
-pub const IDI_HAND: i32 = 32513;
-pub const IDI_QUESTION: i32 = 32514;
-pub const IDI_EXCLAMATION: i32 = 32515;
-pub const IDI_ASTERISK: i32 = 32516;
-pub const IDI_WINLOGO: i32 = 32517;
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct MONITORINFO {
+    pub cbSize: u32,
+    pub rcMonitor: RECT,
+    pub rcWork: RECT,
+    pub dwFlags: u32,
+}
 
-pub type HDROP = HANDLE;
-
-#[link(name = "shell32")]
-extern "system" {
-    pub fn DragAcceptFiles(hWnd: HWND, fAccept: BOOL);
-    pub fn DragQueryFileW(hDrop: HDROP, iFile: UINT, lpszFile: LPWSTR, cch: UINT) -> UINT;
-    pub fn DragFinish(hDrop: HDROP);
+impl Default for MONITORINFO {
+    fn default() -> Self {
+        Self {
+            cbSize: size_of::<Self>() as u32,
+            rcMonitor: RECT::default(),
+            rcWork: RECT::default(),
+            dwFlags: 0,
+        }
+    }
 }
