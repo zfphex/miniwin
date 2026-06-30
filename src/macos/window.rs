@@ -12,8 +12,6 @@ thread_local! {
     pub(crate) static REPAINT_FUNC: std::cell::Cell<Option<fn(*mut std::ffi::c_void, &mut Window)>> = const { std::cell::Cell::new(None) };
 }
 
-// Enums now in common.rs
-
 pub struct Window {
     pub(crate) ns_window: id,
     pub(crate) ns_view: id,
@@ -27,8 +25,8 @@ static APP_INIT: std::sync::Once = std::sync::Once::new();
 
 pub fn create_window(
     title: &str,
-    x: i32,
-    y: i32,
+    _x: i32,
+    _y: i32,
     width: i32,
     height: i32,
     style: WindowStyle,
