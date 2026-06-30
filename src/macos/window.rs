@@ -8,14 +8,14 @@ use crate::*;
 use std::path::PathBuf;
 
 thread_local! {
-    pub(crate) static REPAINT_CALLBACK: std::cell::Cell<Option<*mut std::ffi::c_void>> = const { std::cell::Cell::new(None) };
-    pub(crate) static REPAINT_FUNC: std::cell::Cell<Option<fn(*mut std::ffi::c_void, &mut Window)>> = const { std::cell::Cell::new(None) };
+    pub static REPAINT_CALLBACK: std::cell::Cell<Option<*mut std::ffi::c_void>> = const { std::cell::Cell::new(None) };
+    pub static REPAINT_FUNC: std::cell::Cell<Option<fn(*mut std::ffi::c_void, &mut Window)>> = const { std::cell::Cell::new(None) };
 }
 
 pub struct Window {
-    pub(crate) ns_window: id,
-    pub(crate) ns_view: id,
-    pub(crate) ns_delegate: id,
+    pub ns_window: id,
+    pub ns_view: id,
+    pub ns_delegate: id,
     vsync: VsyncTracker,
     event_queue: std::collections::VecDeque<Event>,
     _marker: std::marker::PhantomData<*mut ()>,
@@ -617,7 +617,7 @@ impl crate::Window for Window {
 }
 
 impl Window {
-    pub(crate) unsafe fn from_raw(ns_window: id, ns_view: id, ns_delegate: id) -> Self {
+    pub unsafe fn from_raw(ns_window: id, ns_view: id, ns_delegate: id) -> Self {
         Window {
             ns_window,
             ns_view,
@@ -694,6 +694,7 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                 let key_code_func: unsafe extern "C" fn(id, SEL) -> u16 =
                     std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
                 let keycode = key_code_func(ns_event, key_code_sel);
+                let key = Key::from_macos_keycode(keycode);
 
                 if event_type == NSEventTypeKeyDown {
                     // Extract text input characters
@@ -729,9 +730,17 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                             }
                         }
                     }
-                    Some(Event::KeyDown { keycode, modifiers })
+                    Some(Event::KeyDown {
+                        key,
+                        keycode,
+                        modifiers,
+                    })
                 } else {
-                    Some(Event::KeyUp { keycode, modifiers })
+                    Some(Event::KeyUp {
+                        key,
+                        keycode,
+                        modifiers,
+                    })
                 }
             }
             NSEventTypeLeftMouseDown

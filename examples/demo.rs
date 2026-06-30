@@ -2,14 +2,7 @@ use miniwin::*;
 
 fn main() {
     println!("Initializing Window...");
-    // Unified window creation for both platforms
-    let mut window = create_window(
-        "Demo",
-        None,
-        800,
-        600,
-        WindowStyle::Standard,
-    );
+    let mut window = create_window("Demo", None, 800, 600, WindowStyle::Standard);
 
     let scale = window.scale_factor();
     let physical_width = (800.0 * scale) as usize;
@@ -76,6 +69,11 @@ fn main() {
         for event in events {
             match event {
                 Event::Quit | Event::CloseRequested => {
+                    running = false;
+                }
+                Event::KeyDown {
+                    key: Key::Escape, ..
+                } => {
                     running = false;
                 }
                 Event::ReceivedCharacter(c) => {

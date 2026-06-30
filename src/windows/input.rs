@@ -54,13 +54,13 @@ impl MouseButtonState {
         initial.intersects(area) && release.intersects(area)
     }
 
-    pub(crate) fn pressed(&mut self, pos: Rect) {
+    pub fn pressed(&mut self, pos: Rect) {
         self.pressed = true;
         self.released = false;
         self.initial_position = Some(pos);
     }
 
-    pub(crate) fn released(&mut self, pos: Rect) {
+    pub fn released(&mut self, pos: Rect) {
         self.pressed = false;
         self.released = true;
         self.release_position = Some(pos);
@@ -112,13 +112,13 @@ impl InputState {
         self.scroll_delta = 0.0;
     }
 
-    pub(crate) fn set_key_down(&mut self, vk_code: usize) {
+    pub fn set_key_down(&mut self, vk_code: usize) {
         if vk_code < 256 {
             self.current_keys[vk_code] = true;
         }
     }
 
-    pub(crate) fn set_key_up(&mut self, vk_code: usize) {
+    pub fn set_key_up(&mut self, vk_code: usize) {
         if vk_code < 256 {
             self.current_keys[vk_code] = false;
         }

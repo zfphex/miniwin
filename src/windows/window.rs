@@ -657,6 +657,19 @@ fn invoke_render_callback(window: &mut Window) {
     window.render_executor = executor;
 }
 
+fn current_modifiers() -> Modifiers {
+    const KEY_DOWN: i16 = 0x8000u16 as i16;
+
+    unsafe {
+        Modifiers {
+            shift: (GetKeyState(0x10) & KEY_DOWN) != 0,
+            ctrl: (GetKeyState(0x11) & KEY_DOWN) != 0,
+            alt: (GetKeyState(0x12) & KEY_DOWN) != 0,
+            logo: (GetKeyState(0x5B) & KEY_DOWN) != 0 || (GetKeyState(0x5C) & KEY_DOWN) != 0,
+        }
+    }
+}
+
 pub unsafe extern "system" fn wnd_proc(
     hwnd: isize,
     msg: u32,
@@ -776,9 +789,21 @@ pub unsafe extern "system" fn wnd_proc(
         }
         WM_KEYDOWN | WM_SYSKEYDOWN => {
             window.input.set_key_down(wparam);
+            let keycode = wparam as u16;
+            window.event_queue.push_back(Event::KeyDown {
+                key: Key::from_windows_vk(keycode),
+                keycode,
+                modifiers: current_modifiers(),
+            });
         }
         WM_KEYUP | WM_SYSKEYUP => {
             window.input.set_key_up(wparam);
+            let keycode = wparam as u16;
+            window.event_queue.push_back(Event::KeyUp {
+                key: Key::from_windows_vk(keycode),
+                keycode,
+                modifiers: current_modifiers(),
+            });
         }
         WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_XBUTTONDOWN => {
             SetCapture(hwnd);
