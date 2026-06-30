@@ -1,6 +1,7 @@
 #![allow(non_upper_case_globals)]
 
 use crate::event::*;
+use crate::common::*;
 use crate::ffi::*;
 use crate::objc::*;
 use crate::vsync::VsyncTracker;
@@ -46,6 +47,17 @@ pub struct Window {
 }
 
 static APP_INIT: std::sync::Once = std::sync::Once::new();
+
+pub fn create_window(
+    title: &str,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    style: WindowStyle,
+) -> std::pin::Pin<Box<Window>> {
+    Box::pin(Window::new(title, width as f64, height as f64, style, FullscreenMode::None))
+}
 
 impl Window {
     pub fn new(
@@ -614,6 +626,15 @@ unsafe extern "C" fn release_provider_data(
     }
 }
 
+fn parse_modifiers(flags: usize) -> Modifiers {
+    Modifiers {
+        shift: (flags & (1 << 17)) != 0,
+        ctrl: (flags & (1 << 18)) != 0,
+        alt: (flags & (1 << 19)) != 0,
+        logo: (flags & (1 << 20)) != 0,
+    }
+}
+
 unsafe fn translate_event(ns_event: id) -> Option<Event> {
     unsafe {
         let event_type_sel = sel_registerName(b"type\0".as_ptr() as *const _);
@@ -625,7 +646,7 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
         let modifier_flags_func: unsafe extern "C" fn(id, SEL) -> usize =
             std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
         let flags = modifier_flags_func(ns_event, modifier_flags_sel);
-        let modifiers = Modifiers::parse(flags);
+        let modifiers = parse_modifiers(flags);
 
         match event_type {
             NSEventTypeKeyDown | NSEventTypeKeyUp => {
@@ -903,6 +924,7 @@ pub fn register_view_class() -> Class {
 
         objc_registerClassPair(cls);
     });
+
     if cls.is_null() {
         unsafe { objc_getClass(b"RustView\0".as_ptr() as *const _) }
     } else {

@@ -3,5 +3,13 @@
 version = 4
 
 [[package]]
-name = "winmac"
+name = "mini"
 version = "0.1.0"
+source = "git+https://github.com/zx3no/mini#5f2a3b76f5ecc3d09a9c821496f1e99357953e48"
+
+[[package]]
+name = "miniwin"
+version = "0.1.0"
+dependencies = [
+ "mini",
+]
