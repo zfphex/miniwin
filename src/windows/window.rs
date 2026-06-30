@@ -457,9 +457,6 @@ impl Window {
         if let Some(event) = self.event_queue.pop_front() {
             return Some(event);
         }
-        if self.quit {
-            return Some(Event::Quit);
-        }
         None
     }
 
@@ -518,8 +515,95 @@ impl Window {
         }
     }
 
-    pub fn vsync(&self) {
-        unsafe { DwmFlush() };
+    pub fn wait_for_vsync(&self) {
+        unsafe { crate::windows::fps::DwmFlush() };
+    }
+
+    pub fn update_buffer(&mut self, pixels: &[u32], width: usize, height: usize) {
+        if self.buffer.len() != pixels.len() {
+            self.buffer.resize(pixels.len(), 0);
+        }
+        self.buffer.copy_from_slice(pixels);
+        self.present();
+    }
+
+    pub fn scale_factor(&self) -> f64 {
+        self.display_scale as f64
+    }
+
+    pub fn content_size(&self) -> (usize, usize) {
+        let rect = self.client_area();
+        (rect.width, rect.height)
+    }
+
+    pub fn set_cursor_visible(&self, visible: bool) {
+        unsafe {
+            ShowCursor(if visible { 1 } else { 0 });
+        }
+    }
+
+    pub fn set_cursor_grab(&self, grab: bool) {
+        unsafe {
+            if grab {
+                let mut rect = RECT::default();
+                GetClientRect(self.hwnd, &mut rect);
+                let mut pt_top_left = POINT { x: rect.left, y: rect.top };
+                let mut pt_bottom_right = POINT { x: rect.right, y: rect.bottom };
+                ClientToScreen(self.hwnd, &mut pt_top_left);
+                ClientToScreen(self.hwnd, &mut pt_bottom_right);
+                rect.left = pt_top_left.x;
+                rect.top = pt_top_left.y;
+                rect.right = pt_bottom_right.x;
+                rect.bottom = pt_bottom_right.y;
+                ClipCursor(&rect);
+            } else {
+                ClipCursor(null());
+            }
+        }
+    }
+
+    pub fn set_cursor_icon(&self, icon: CursorIcon) {
+        let idc = match icon {
+            CursorIcon::Arrow => IDC_ARROW,
+            CursorIcon::IBeam => IDC_IBEAM,
+            CursorIcon::PointingHand => IDC_HAND,
+            CursorIcon::Crosshair => IDC_CROSS,
+            CursorIcon::ResizeLeftRight => IDC_SIZEWE,
+            CursorIcon::ResizeUpDown => IDC_SIZENS,
+            _ => IDC_ARROW,
+        };
+        unsafe {
+            SetCursor(LoadCursorW(null_mut(), idc));
+        }
+    }
+
+    pub fn get_clipboard_text(&self) -> Option<String> {
+        unsafe {
+            if crate::windows::clipboard::OpenClipboard(self.hwnd) == 0 {
+                return None;
+            }
+            let handle = crate::windows::clipboard::GetClipboardData(crate::windows::clipboard::CF_TEXT);
+            let mut result = None;
+            if !handle.is_null() {
+                let ptr = crate::windows::clipboard::GlobalLock(handle) as *const u8;
+                if !ptr.is_null() {
+                    let mut len = 0;
+                    while *ptr.add(len) != 0 {
+                        len += 1;
+                    }
+                    if let Ok(s) = std::str::from_utf8(std::slice::from_raw_parts(ptr, len)) {
+                        result = Some(s.to_string());
+                    }
+                    crate::windows::clipboard::GlobalUnlock(handle);
+                }
+            }
+            crate::windows::clipboard::CloseClipboard();
+            result
+        }
+    }
+
+    pub fn set_clipboard_text(&self, text: &str) {
+        crate::windows::clipboard::copy_to_clipboard(text);
     }
 }
 

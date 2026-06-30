@@ -8,41 +8,18 @@ use crate::vsync::VsyncTracker;
 use std::path::PathBuf;
 
 thread_local! {
-    pub(crate) static REPAINT_CALLBACK: std::cell::Cell<Option<*mut std::ffi::c_void>> = std::cell::Cell::new(None);
-    pub(crate) static REPAINT_FUNC: std::cell::Cell<Option<unsafe fn(*mut std::ffi::c_void, &mut Window, usize, usize)>> = std::cell::Cell::new(None);
+    pub(crate) static REPAINT_CALLBACK: std::cell::Cell<Option<*mut std::ffi::c_void>> = const { std::cell::Cell::new(None) };
+    pub(crate) static REPAINT_FUNC: std::cell::Cell<Option<fn(*mut std::ffi::c_void, &mut Window)>> = const { std::cell::Cell::new(None) };
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WindowStyle {
-    Standard,
-    Borderless,
-    Transparent,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FullscreenMode {
-    None,
-    Workspace,  // Native macOS fullscreen
-    MonitorFit, // Fits the borderless window to monitor size
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CursorIcon {
-    Arrow,
-    IBeam,
-    PointingHand,
-    ClosedHand,
-    OpenHand,
-    Crosshair,
-    ResizeLeftRight,
-    ResizeUpDown,
-}
+// Enums now in common.rs
 
 pub struct Window {
     pub(crate) ns_window: id,
     pub(crate) ns_view: id,
     pub(crate) ns_delegate: id,
     vsync: VsyncTracker,
+    event_queue: std::collections::VecDeque<Event>,
     _marker: std::marker::PhantomData<*mut ()>,
 }
 
@@ -325,6 +302,7 @@ impl Window {
                 ns_view,
                 ns_delegate,
                 vsync,
+                event_queue: std::collections::VecDeque::new(),
                 _marker: std::marker::PhantomData,
             }
         }
@@ -383,20 +361,20 @@ impl Window {
         }
     }
 
-    pub fn backing_scale_factor(&self) -> f64 {
+    pub fn scale_factor(&self) -> f64 {
         unsafe {
-            let scale_sel = sel_registerName(b"backingScaleFactor\0".as_ptr() as *const _);
+            let sel = sel_registerName(b"backingScaleFactor\0".as_ptr() as *const _);
             let scale_func: unsafe extern "C" fn(id, SEL) -> f64 =
                 std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
-            scale_func(self.ns_window, scale_sel)
+            scale_func(self.ns_window, sel)
         }
     }
 
-    pub fn content_size(&self) -> (f64, f64) {
+    pub fn content_size(&self) -> (usize, usize) {
         unsafe {
-            let content_view = msg_send_id(self.ns_window, sel_registerName(b"contentView\0".as_ptr() as *const _));
-            let frame = msg_send_rect(content_view, sel_registerName(b"frame\0".as_ptr() as *const _));
-            (frame.size.width, frame.size.height)
+            let frame_sel = sel_registerName(b"frame\0".as_ptr() as *const _);
+            let frame = msg_send_rect(self.ns_view, frame_sel);
+            (frame.size.width as usize, frame.size.height as usize)
         }
     }
 
@@ -490,24 +468,25 @@ impl Window {
         }
     }
 
-    pub fn poll_events<F>(&mut self, mut repaint: F) -> Vec<Event>
+    pub fn draw<F>(&mut self, mut render: F)
     where
-        F: FnMut(&mut Window, usize, usize),
+        F: FnMut(&mut Self),
     {
         #[cfg(debug_assertions)]
         assert_main_thread();
 
         // Store the closure in thread-local storage
-        let repaint_ptr = &mut repaint as *mut F as *mut std::ffi::c_void;
-        let repaint_func = |ptr: *mut std::ffi::c_void, window: &mut Window, w: usize, h: usize| unsafe {
+        let repaint_ptr = &mut render as *mut F as *mut std::ffi::c_void;
+        let repaint_func = |ptr: *mut std::ffi::c_void, window: &mut Window| unsafe {
             let f = &mut *(ptr as *mut F);
-            f(window, w, h);
+            f(window);
         };
 
         REPAINT_CALLBACK.with(|c| c.set(Some(repaint_ptr)));
         REPAINT_FUNC.with(|f| f.set(Some(repaint_func)));
 
-        let mut events = Vec::new();
+        render(self);
+
         unsafe {
             let ns_app = msg_send_id(
                 objc_getClass(b"NSApplication\0".as_ptr() as *const _),
@@ -554,7 +533,7 @@ impl Window {
                 }
 
                 if let Some(ev) = translate_event(event) {
-                    events.push(ev);
+                    self.event_queue.push_back(ev);
                 }
 
                 // Dispatch event to targets
@@ -574,8 +553,11 @@ impl Window {
         REPAINT_FUNC.with(|f| f.set(None));
 
         // Append any events captured by the delegate callbacks (like close/resize)
-        events.extend(pop_all_events());
-        events
+        self.event_queue.extend(crate::macos::event::pop_all_events());
+    }
+
+    pub fn event(&mut self) -> Option<Event> {
+        self.event_queue.pop_front()
     }
 
     pub(crate) unsafe fn from_raw(ns_window: id, ns_view: id, ns_delegate: id) -> Self {
@@ -584,6 +566,7 @@ impl Window {
             ns_view,
             ns_delegate,
             vsync: VsyncTracker::new(),
+            event_queue: std::collections::VecDeque::new(),
             _marker: std::marker::PhantomData,
         }
     }
@@ -883,7 +866,8 @@ extern "C" fn window_did_resize(_this: id, _cmd: SEL, notification: id) {
                 content_view,
                 delegate,
             ));
-            func(ptr, &mut temp_window, physical_width, physical_height);
+            // Hack for macOS resize rendering compatibility with windows
+            func(ptr, &mut temp_window);
         }
 
         push_event(Event::Resized {
