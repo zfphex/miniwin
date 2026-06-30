@@ -5,8 +5,7 @@ fn main() {
     // Unified window creation for both platforms
     let mut window = create_window(
         "Demo",
-        0,
-        0, // Default position
+        None,
         800,
         600,
         WindowStyle::Standard,

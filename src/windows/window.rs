@@ -4,8 +4,7 @@ pub const DEFAULT_DPI: f32 = 96.0;
 
 pub fn create_window(
     title: &str,
-    x: i32,
-    y: i32,
+    position: Option<(i32, i32)>,
     width: i32,
     height: i32,
     style: WindowStyle,
@@ -47,14 +46,15 @@ pub fn create_window(
         RegisterClassA(&wnd_class);
 
         let (win_style, win_exstyle) = get_style_flags(style);
+        let (x, y) = position.unwrap_or((CW_USEDEFAULT, CW_USEDEFAULT));
 
         let hwnd = CreateWindowExA(
             win_exstyle,
             title.as_ptr() as *const u8,
             title.as_ptr() as *const u8,
             win_style,
-            if x == 0 { CW_USEDEFAULT } else { x },
-            if y == 0 { CW_USEDEFAULT } else { y },
+            x,
+            y,
             // CW_USEDEFAULT,
             // CW_USEDEFAULT,
             //These are adjusted later for DPI scaling.

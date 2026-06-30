@@ -39,6 +39,13 @@ pub unsafe fn msg_send_id_usize_void(obj: id, sel: SEL, arg1: usize) {
     }
 }
 
+pub unsafe fn msg_send_void(obj: id, sel: SEL) {
+    unsafe {
+        let func: unsafe extern "C" fn(id, SEL) = transmute(objc_msgSend as *const c_void);
+        func(obj, sel)
+    }
+}
+
 // Convert a Rust string to a Cocoa NSString (retaining pointer)
 pub unsafe fn nsstring(s: &str) -> id {
     unsafe {

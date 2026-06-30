@@ -23,30 +23,45 @@ pub struct Window {
 
 static APP_INIT: std::sync::Once = std::sync::Once::new();
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum WindowPosition {
+    Centered,
+    TopLeft { x: f64, y: f64 },
+}
+
 pub fn create_window(
     title: &str,
-    _x: i32,
-    _y: i32,
+    position: Option<(i32, i32)>,
     width: i32,
     height: i32,
     style: WindowStyle,
 ) -> std::pin::Pin<Box<Window>> {
+    let position = match position {
+        Some((x, y)) => WindowPosition::TopLeft {
+            x: x as f64,
+            y: y as f64,
+        },
+        None => WindowPosition::Centered,
+    };
+
     Box::pin(Window::new(
         title,
         width as f64,
         height as f64,
         style,
         FullscreenMode::None,
+        position,
     ))
 }
 
 impl Window {
-    pub fn new(
+    fn new(
         title: &str,
         width: f64,
         height: f64,
         style: WindowStyle,
         fullscreen: FullscreenMode,
+        position: WindowPosition,
     ) -> Self {
         #[cfg(debug_assertions)]
         assert_main_thread();
@@ -173,7 +188,27 @@ impl Window {
                 style_mask = NSWindowStyleMaskBorderless;
             }
 
-            let rect = NSRect::new(0.0, 0.0, final_width, final_height);
+            let rect = match (fullscreen, position) {
+                (FullscreenMode::None, WindowPosition::TopLeft { x, y }) => {
+                    let main_screen = msg_send_id(
+                        objc_getClass(b"NSScreen\0".as_ptr() as *const _),
+                        sel_registerName(b"mainScreen\0".as_ptr() as *const _),
+                    );
+                    let visible_frame_sel =
+                        sel_registerName(b"visibleFrame\0".as_ptr() as *const _);
+                    let screen_rect = msg_send_rect(main_screen, visible_frame_sel);
+                    let origin_y =
+                        screen_rect.origin.y + screen_rect.size.height - y - final_height;
+
+                    NSRect::new(
+                        screen_rect.origin.x + x,
+                        origin_y,
+                        final_width,
+                        final_height,
+                    )
+                }
+                _ => NSRect::new(0.0, 0.0, final_width, final_height),
+            };
             let window_class = objc_getClass(b"NSWindow\0".as_ptr() as *const _);
             let window_alloc = msg_send_id(window_class, alloc_sel);
 
@@ -196,6 +231,13 @@ impl Window {
                 NSBackingStoreBuffered,
                 NO,
             );
+
+            if fullscreen == FullscreenMode::None && position == WindowPosition::Centered {
+                msg_send_void(
+                    ns_window,
+                    sel_registerName(b"center\0".as_ptr() as *const _),
+                );
+            }
 
             if style == WindowStyle::Transparent {
                 msg_send_id_bool_void(
