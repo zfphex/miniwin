@@ -13,7 +13,8 @@ pub trait Window {
     where
         F: FnMut(&mut Self);
     fn event(&mut self) -> Option<Event>;
-    fn update_buffer(&mut self, pixels: &[u32], width: usize, height: usize);
+    fn framebuffer(&mut self) -> &mut [u32];
+    fn present_framebuffer(&self);
     fn scale_factor(&self) -> f64;
     fn content_size(&self) -> (usize, usize);
     fn wait_for_vsync(&self);

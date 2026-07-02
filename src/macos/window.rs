@@ -18,6 +18,9 @@ pub struct Window {
     pub ns_window: id,
     pub ns_view: id,
     pub ns_delegate: id,
+    buffer: Vec<u32>,
+    width: usize,
+    height: usize,
     vsync: VsyncTracker,
     event_queue: std::collections::VecDeque<Event>,
     _marker: std::marker::PhantomData<*mut ()>,
@@ -342,6 +345,9 @@ impl Window {
                 ns_delegate,
                 vsync,
                 event_queue: std::collections::VecDeque::new(),
+                buffer: Vec::new(),
+                width: 0,
+                height: 0,
                 _marker: std::marker::PhantomData,
             }
         }
@@ -359,13 +365,29 @@ impl Window {
 }
 
 impl crate::Window for Window {
-    fn update_buffer(&mut self, pixels: &[u32], width: usize, height: usize) {
-        unsafe {
-            let size = pixels.len() * 4;
-            let boxed_pixels = pixels.to_vec();
-            let data_ptr = boxed_pixels.as_ptr() as *const std::ffi::c_void;
-            std::mem::forget(boxed_pixels);
+    fn framebuffer(&mut self) -> &mut [u32] {
+        let (w, h) = self.content_size();
+        let expected_size = w * h;
 
+        // Dynamically resize the internal buffer if the window size changes
+        if self.buffer.len() != expected_size {
+            self.buffer.resize(expected_size, 0);
+            self.width = w;
+            self.height = h;
+        }
+
+        &mut self.buffer
+    }
+
+    fn present_framebuffer(&self) {
+        let (w, h) = (self.width, self.height);
+        if w == 0 || h == 0 || self.buffer.is_empty() {
+            return;
+        }
+
+        unsafe {
+            let size = self.buffer.len() * 4;
+            let data_ptr = self.buffer.as_ptr() as *const std::ffi::c_void;
             let provider = CGDataProviderCreateWithData(
                 std::ptr::null_mut(),
                 data_ptr,
@@ -377,11 +399,11 @@ impl crate::Window for Window {
             let bitmap_info = kCGImageAlphaNoneSkipFirst | kCGBitmapByteOrder32Little;
 
             let cg_image = CGImageCreate(
-                width,
-                height,
+                w,
+                h,
                 8,
                 32,
-                width * 4,
+                w * 4,
                 color_space,
                 bitmap_info,
                 provider,
@@ -394,6 +416,9 @@ impl crate::Window for Window {
             let layer = msg_send_id(self.ns_view, layer_sel);
 
             let set_contents_sel = sel_registerName(b"setContents:\0".as_ptr() as *const _);
+
+            // CoreAnimation will read the pointer contents and synchronously upload it
+            // to the GPU before the next frame is allowed to start.
             msg_send_id_id_void(layer, set_contents_sel, cg_image as id);
 
             CFRelease(cg_image as CFTypeRef);
@@ -673,9 +698,11 @@ unsafe extern "C" fn release_provider_data(
     data: *const std::ffi::c_void,
     size: usize,
 ) {
-    unsafe {
-        let _vec = Vec::from_raw_parts(data as *mut u32, size / 4, size / 4);
-    }
+    // NO-OP.
+    // The buffer is owned by the Rust `Window` struct.
+    // We explicitly do not free the memory here. CoreAnimation safely
+    // reads this pointer and uploads it to the GPU before returning control
+    // to our event loop for the next frame.
 }
 
 fn parse_modifiers(flags: usize) -> Modifiers {

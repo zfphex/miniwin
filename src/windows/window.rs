@@ -131,9 +131,9 @@ pub fn create_window(
 pub struct Window {
     pub hwnd: isize,
     pub display_scale: f32,
-    //GDI related
     pub dc: *mut c_void,
-    pub buffer: Vec<u32>,
+    //Might need to be resized before use.
+    buffer: Vec<u32>,
     pub bitmap: BITMAPINFO,
     pub area: Rect,
     pub quit: bool,
@@ -457,26 +457,6 @@ impl Window {
 
         return None;
     }
-
-    pub fn present(&mut self) {
-        unsafe {
-            StretchDIBits(
-                self.dc,
-                0,
-                0,
-                self.area.width as i32,
-                self.area.height as i32,
-                0,
-                0,
-                self.area.width as i32,
-                self.area.height as i32,
-                self.buffer.as_mut_ptr() as *const c_void,
-                &self.bitmap,
-                0,
-                SRCCOPY,
-            );
-        }
-    }
 }
 
 impl crate::Window for Window {
@@ -496,8 +476,6 @@ impl crate::Window for Window {
         F: FnMut(&mut Self),
     {
         render(self);
-        //TODO: Skip this for WGL.
-        self.present();
 
         unsafe fn execute_render<F>(closure_ptr: *mut c_void, window: &mut Window)
         where
@@ -530,12 +508,37 @@ impl crate::Window for Window {
         unsafe { DwmFlush() };
     }
 
-    fn update_buffer(&mut self, pixels: &[u32], width: usize, height: usize) {
-        if self.buffer.len() != pixels.len() {
-            self.buffer.resize(pixels.len(), 0);
+    fn framebuffer(&mut self) -> &mut [u32] {
+        let (width, height) = self.content_size();
+
+        if self.buffer.len() != width * height {
+            self.buffer.clear();
+            self.buffer.resize(width * height, 0);
+            self.bitmap = BITMAPINFO::new(width as i32, height as i32);
+            self.area = Rect::new(0, 0, width, height);
         }
-        self.buffer.copy_from_slice(pixels);
-        self.present();
+
+        &mut self.buffer
+    }
+
+    fn present_framebuffer(&self) {
+        unsafe {
+            StretchDIBits(
+                self.dc,
+                0,
+                0,
+                self.area.width as i32,
+                self.area.height as i32,
+                0,
+                0,
+                self.area.width as i32,
+                self.area.height as i32,
+                self.buffer.as_ptr() as *const c_void,
+                &self.bitmap,
+                0,
+                SRCCOPY,
+            );
+        }
     }
 
     fn scale_factor(&self) -> f64 {
@@ -649,9 +652,6 @@ fn invoke_render_callback(window: &mut Window) {
         unsafe { exec(cb_ptr, window) };
     }
 
-    //TODO: Will need to support WGL use cases here too.
-    window.present();
-
     // Restore the callback pointer
     window.render_callback = cb_ptr;
     window.render_executor = executor;
@@ -729,17 +729,14 @@ pub unsafe extern "system" fn wnd_proc(
             return 0;
         }
         WM_SIZE => {
-            //TODO: How to skip this for no GDI use.
             let (width, height) = (low, high);
-            window.buffer.clear();
-            window.buffer.resize(width * height, 0);
-            window.bitmap = BITMAPINFO::new(width as i32, height as i32);
-            window.area = Rect::new(0, 0, width, height);
             invoke_render_callback(window);
             return 0;
         }
         WM_SIZING | WM_PAINT => {
             invoke_render_callback(window);
+            ValidateRect(hwnd, null());
+            return 0;
         }
         //https://learn.microsoft.com/en-us/windows/win32/hidpi/wm-dpichanged
         WM_DPICHANGED => {
