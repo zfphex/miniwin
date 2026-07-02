@@ -969,7 +969,7 @@ unsafe fn start_tracking_repaint_timer(window: id, target: id) {
             let timer = make_timer(
                 timer_class,
                 timer_sel,
-                1.0 / 60.0,
+                repaint_interval_for_window(window),
                 target,
                 sel_registerName(b"liveResizeTick:\0".as_ptr() as *const _),
                 window,
@@ -998,6 +998,34 @@ unsafe fn start_tracking_repaint_timer(window: id, target: id) {
 
             cell.set(timer);
         });
+    }
+}
+
+unsafe fn repaint_interval_for_window(window: id) -> f64 {
+    unsafe {
+        let mut screen = msg_send_id(window, sel_registerName(b"screen\0".as_ptr() as *const _));
+        if screen.is_null() {
+            screen = msg_send_id(
+                objc_getClass(b"NSScreen\0".as_ptr() as *const _),
+                sel_registerName(b"mainScreen\0".as_ptr() as *const _),
+            );
+        }
+
+        let fps_sel = sel_registerName(b"maximumFramesPerSecond\0".as_ptr() as *const _);
+        let responds_to_sel = sel_registerName(b"respondsToSelector:\0".as_ptr() as *const _);
+        let responds_to: unsafe extern "C" fn(id, SEL, SEL) -> BOOL =
+            std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+
+        if !screen.is_null() && responds_to(screen, responds_to_sel, fps_sel) == YES {
+            let fps_func: unsafe extern "C" fn(id, SEL) -> isize =
+                std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+            let fps = fps_func(screen, fps_sel);
+            if fps > 0 {
+                return 1.0 / fps as f64;
+            }
+        }
+
+        1.0 / 60.0
     }
 }
 
