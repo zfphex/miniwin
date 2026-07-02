@@ -279,16 +279,10 @@ pub struct WNDCLASSA {
 }
 
 pub fn accent_color() -> u32 {
-    unsafe {
-        let mut color = std::mem::zeroed();
-        let mut blend = std::mem::zeroed();
-        assert!(DwmGetColorizationColor(&mut color, &mut blend) == 0);
-        let r = (color & 0xFF) as u8;
-        let g = ((color >> 8) & 0xFF) as u8;
-        let b = ((color >> 16) & 0xFF) as u8;
-        //bgr format instead of rgb for some reason.
-        (b as u32) << 16 | (g as u32) << 8 | (r as u32)
-    }
+    let mut color = 0;
+    let mut blend = 0;
+    unsafe { DwmGetColorizationColor(&mut color, &mut blend) };
+    color & 0x00FFFFFF
 }
 
 #[inline]
