@@ -10,6 +10,8 @@ use std::path::PathBuf;
 thread_local! {
     pub static REPAINT_CALLBACK: std::cell::Cell<Option<*mut std::ffi::c_void>> = const { std::cell::Cell::new(None) };
     pub static REPAINT_FUNC: std::cell::Cell<Option<fn(*mut std::ffi::c_void, &mut Window)>> = const { std::cell::Cell::new(None) };
+    static ACTIVE_WINDOW: std::cell::Cell<*mut Window> = const { std::cell::Cell::new(std::ptr::null_mut()) };
+    static TRACKING_REPAINT_TIMER: std::cell::Cell<id> = const { std::cell::Cell::new(nil) };
 }
 
 pub struct Window {
@@ -538,6 +540,7 @@ impl crate::Window for Window {
 
         REPAINT_CALLBACK.with(|c| c.set(Some(repaint_ptr)));
         REPAINT_FUNC.with(|f| f.set(Some(repaint_func)));
+        ACTIVE_WINDOW.with(|w| w.set(self as *mut Window));
 
         render(self);
 
@@ -590,12 +593,33 @@ impl crate::Window for Window {
                     self.event_queue.push_back(ev);
                 }
 
-                // Dispatch event to targets
+                let event_type_sel = sel_registerName(b"type\0".as_ptr() as *const _);
+                let event_type_func: unsafe extern "C" fn(id, SEL) -> NSEventType =
+                    std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+                let event_type = event_type_func(event, event_type_sel);
+                let starts_mouse_tracking = matches!(
+                    event_type,
+                    NSEventTypeLeftMouseDown | NSEventTypeRightMouseDown
+                );
+
+                if starts_mouse_tracking {
+                    let event_window =
+                        msg_send_id(event, sel_registerName(b"window\0".as_ptr() as *const _));
+                    if event_window == self.ns_window {
+                        start_tracking_repaint_timer(self.ns_window, self.ns_delegate);
+                    }
+                }
+
+                // Dispatch event to targets. AppKit can block here inside border/titlebar tracking.
                 msg_send_id_id_void(
                     ns_app,
                     sel_registerName(b"sendEvent:\0".as_ptr() as *const _),
                     event,
                 );
+
+                if starts_mouse_tracking {
+                    stop_tracking_repaint_timer();
+                }
             }
 
             // Release the autorelease pool
@@ -603,6 +627,7 @@ impl crate::Window for Window {
         }
 
         // Clear thread-local storage
+        ACTIVE_WINDOW.with(|w| w.set(std::ptr::null_mut()));
         REPAINT_CALLBACK.with(|c| c.set(None));
         REPAINT_FUNC.with(|f| f.set(None));
 
@@ -613,19 +638,6 @@ impl crate::Window for Window {
 
     fn event(&mut self) -> Option<Event> {
         self.event_queue.pop_front()
-    }
-}
-
-impl Window {
-    pub unsafe fn from_raw(ns_window: id, ns_view: id, ns_delegate: id) -> Self {
-        Window {
-            ns_window,
-            ns_view,
-            ns_delegate,
-            vsync: VsyncTracker::new(),
-            event_queue: std::collections::VecDeque::new(),
-            _marker: std::marker::PhantomData,
-        }
     }
 }
 
@@ -884,6 +896,27 @@ pub fn register_delegate_class() -> Class {
             b"v@:@\0".as_ptr() as *const _,
         );
 
+        class_addMethod(
+            cls,
+            sel_registerName(b"windowWillStartLiveResize:\0".as_ptr() as *const _),
+            std::mem::transmute(window_will_start_live_resize as *const std::ffi::c_void),
+            b"v@:@\0".as_ptr() as *const _,
+        );
+
+        class_addMethod(
+            cls,
+            sel_registerName(b"windowDidEndLiveResize:\0".as_ptr() as *const _),
+            std::mem::transmute(window_did_end_live_resize as *const std::ffi::c_void),
+            b"v@:@\0".as_ptr() as *const _,
+        );
+
+        class_addMethod(
+            cls,
+            sel_registerName(b"liveResizeTick:\0".as_ptr() as *const _),
+            std::mem::transmute(live_resize_tick as *const std::ffi::c_void),
+            b"v@:@\0".as_ptr() as *const _,
+        );
+
         objc_registerClassPair(cls);
     });
     if cls.is_null() {
@@ -896,6 +929,114 @@ pub fn register_delegate_class() -> Class {
 extern "C" fn window_should_close(_this: id, _cmd: SEL, _sender: id) -> BOOL {
     push_event(Event::CloseRequested);
     YES
+}
+
+unsafe fn repaint_window(window: id) {
+    unsafe {
+        let callback_opt = REPAINT_CALLBACK.with(|c| c.get());
+        let func_opt = REPAINT_FUNC.with(|f| f.get());
+        let active_window = ACTIVE_WINDOW.with(|w| w.get());
+
+        if let (Some(ptr), Some(func)) = (callback_opt, func_opt) {
+            if !active_window.is_null() && (*active_window).ns_window == window {
+                func(ptr, &mut *active_window);
+            }
+        }
+    }
+}
+
+unsafe fn start_tracking_repaint_timer(window: id, target: id) {
+    unsafe {
+        if REPAINT_CALLBACK.with(|c| c.get()).is_none() {
+            return;
+        }
+
+        TRACKING_REPAINT_TIMER.with(|cell| {
+            let old_timer = cell.get();
+            if !old_timer.is_null() {
+                msg_send_id(
+                    old_timer,
+                    sel_registerName(b"invalidate\0".as_ptr() as *const _),
+                );
+            }
+
+            let timer_class = objc_getClass(b"NSTimer\0".as_ptr() as *const _);
+            let timer_sel = sel_registerName(
+                b"timerWithTimeInterval:target:selector:userInfo:repeats:\0".as_ptr() as *const _,
+            );
+            let make_timer: unsafe extern "C" fn(id, SEL, f64, id, SEL, id, BOOL) -> id =
+                std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+            let timer = make_timer(
+                timer_class,
+                timer_sel,
+                1.0 / 60.0,
+                target,
+                sel_registerName(b"liveResizeTick:\0".as_ptr() as *const _),
+                window,
+                YES,
+            );
+
+            let run_loop = msg_send_id(
+                objc_getClass(b"NSRunLoop\0".as_ptr() as *const _),
+                sel_registerName(b"currentRunLoop\0".as_ptr() as *const _),
+            );
+            let add_timer_sel = sel_registerName(b"addTimer:forMode:\0".as_ptr() as *const _);
+            let add_timer: unsafe extern "C" fn(id, SEL, id, id) =
+                std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+            add_timer(
+                run_loop,
+                add_timer_sel,
+                timer,
+                nsstring("NSEventTrackingRunLoopMode"),
+            );
+            add_timer(
+                run_loop,
+                add_timer_sel,
+                timer,
+                nsstring("NSRunLoopCommonModes"),
+            );
+
+            cell.set(timer);
+        });
+    }
+}
+
+fn stop_tracking_repaint_timer() {
+    TRACKING_REPAINT_TIMER.with(|cell| {
+        let timer = cell.replace(nil);
+        if !timer.is_null() {
+            unsafe {
+                msg_send_id(
+                    timer,
+                    sel_registerName(b"invalidate\0".as_ptr() as *const _),
+                );
+            }
+        }
+    });
+}
+
+extern "C" fn window_will_start_live_resize(_this: id, _cmd: SEL, notification: id) {
+    unsafe {
+        let window: id = msg_send_id(
+            notification,
+            sel_registerName(b"object\0".as_ptr() as *const _),
+        );
+
+        start_tracking_repaint_timer(window, _this);
+    }
+}
+
+extern "C" fn window_did_end_live_resize(_this: id, _cmd: SEL, _notification: id) {
+    stop_tracking_repaint_timer();
+}
+
+extern "C" fn live_resize_tick(_this: id, _cmd: SEL, timer: id) {
+    unsafe {
+        let window = msg_send_id(timer, sel_registerName(b"userInfo\0".as_ptr() as *const _));
+        if !window.is_null() {
+            repaint_window(window);
+        }
+    }
 }
 
 extern "C" fn window_did_resize(_this: id, _cmd: SEL, notification: id) {
@@ -919,18 +1060,8 @@ extern "C" fn window_did_resize(_this: id, _cmd: SEL, notification: id) {
         let physical_width = (frame.size.width * scale) as usize;
         let physical_height = (frame.size.height * scale) as usize;
 
-        // Retrieve and execute the repaint closure via thread-locals
-        let callback_opt = REPAINT_CALLBACK.with(|c| c.get());
-        let func_opt = REPAINT_FUNC.with(|f| f.get());
-
-        if let (Some(ptr), Some(func)) = (callback_opt, func_opt) {
-            let delegate =
-                msg_send_id(window, sel_registerName(b"delegate\0".as_ptr() as *const _));
-            let mut temp_window =
-                std::mem::ManuallyDrop::new(Window::from_raw(window, content_view, delegate));
-            // Hack for macOS resize rendering compatibility with windows
-            func(ptr, &mut temp_window);
-        }
+        // Repaint while AppKit is inside its live-resize tracking loop.
+        repaint_window(window);
 
         push_event(Event::Resized {
             width: frame.size.width,
