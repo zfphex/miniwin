@@ -476,10 +476,12 @@ impl PlatformWindow for Window {
     }
 
     fn framebuffer(&mut self) -> &mut [u32] {
-        let (width, height) = self.content_size();
+        let (content_width, content_height) = self.content_size();
+        let scale = self.scale_factor() as f32;
+        let width = (content_width as f32 * scale).round() as usize;
+        let height = (content_height as f32 * scale).round() as usize;
 
         if self.buffer.len() != width * height {
-            self.buffer.clear();
             self.buffer.resize(width * height, 0);
             self.bitmap = BITMAPINFO::new(width as i32, height as i32);
             self.area = Rect::new(0, 0, width, height);
@@ -494,7 +496,14 @@ impl PlatformWindow for Window {
             return;
         }
 
-        if self.area.width == 0 || self.area.height == 0 || self.buffer.is_empty() {
+        let client_area = self.client_area();
+
+        if client_area.width == 0
+            || client_area.height == 0
+            || self.area.width == 0
+            || self.area.height == 0
+            || self.buffer.is_empty()
+        {
             return;
         }
 
@@ -503,8 +512,8 @@ impl PlatformWindow for Window {
                 self.dc,
                 0,
                 0,
-                self.area.width as i32,
-                self.area.height as i32,
+                client_area.width as i32,
+                client_area.height as i32,
                 0,
                 0,
                 self.area.width as i32,
@@ -523,7 +532,11 @@ impl PlatformWindow for Window {
 
     fn content_size(&self) -> (usize, usize) {
         let rect = self.client_area();
-        (rect.width, rect.height)
+        let scale = self.scale_factor() as f32;
+        (
+            (rect.width as f32 / scale).round().max(0.0) as usize,
+            (rect.height as f32 / scale).round().max(0.0) as usize,
+        )
     }
 
     fn set_cursor_visible(&self, visible: bool) {
@@ -666,12 +679,10 @@ pub unsafe extern "system" fn wnd_proc(
         //I'm not convinced this is the right way to do this.
         let window: &mut Window = &mut *ptr;
 
-        //Clamp negative numbers to 0
-        let mx = (lparam as i16).max(0) as usize;
-        let my = ((lparam >> 16) as i16).max(0) as usize;
-
         let low = (lparam & 0xffff) as usize;
         let high = ((lparam >> 16) & 0xffff) as usize;
+        let mouse_x = lparam as i16 as f64 / window.display_scale as f64;
+        let mouse_y = (lparam >> 16) as i16 as f64 / window.display_scale as f64;
 
         // println!("{}", wm_code_name(msg));
 
@@ -732,11 +743,9 @@ pub unsafe extern "system" fn wnd_proc(
                 let original_width = old.width as f32 / window.display_scale;
                 let original_height = old.height as f32 / window.display_scale;
 
-                let (width, height) = if scale == 1.0 {
-                    (original_width, original_height)
-                } else {
-                    (original_width * scale, original_height * scale)
-                };
+                let width = original_width * scale;
+                let height = original_height * scale;
+                window.display_scale = scale;
 
                 SetWindowPos(
                     hwnd,
@@ -748,7 +757,6 @@ pub unsafe extern "system" fn wnd_proc(
                     SWP_NOZORDER | SWP_NOACTIVATE,
                 );
 
-                window.display_scale = scale;
                 return 0;
             }
             WM_CHAR => {
@@ -758,7 +766,7 @@ pub unsafe extern "system" fn wnd_proc(
                 return 0;
             }
             WM_MOUSEMOVE => {
-                window.input.set_mouse_pos(mx as f64, my as f64);
+                window.input.set_mouse_pos(mouse_x, mouse_y);
             }
             WM_MOUSEWHEEL => {
                 const WHEEL_DELTA: i16 = 120;
@@ -779,7 +787,7 @@ pub unsafe extern "system" fn wnd_proc(
             }
             WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_XBUTTONDOWN => {
                 SetCapture(hwnd);
-                window.input.set_mouse_pos(low as f64, high as f64);
+                window.input.set_mouse_pos(mouse_x, mouse_y);
                 match msg {
                     WM_LBUTTONDOWN => window.input.set_mouse_down(Mouse::Left),
                     WM_RBUTTONDOWN => window.input.set_mouse_down(Mouse::Right),
@@ -805,7 +813,7 @@ pub unsafe extern "system" fn wnd_proc(
                     ReleaseCapture();
                 }
 
-                window.input.set_mouse_pos(low as f64, high as f64);
+                window.input.set_mouse_pos(mouse_x, mouse_y);
                 match msg {
                     WM_LBUTTONUP => window.input.set_mouse_up(Mouse::Left),
                     WM_RBUTTONUP => window.input.set_mouse_up(Mouse::Right),

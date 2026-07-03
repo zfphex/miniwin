@@ -29,6 +29,9 @@ fn main() {
     while window.open() {
         window.draw(|win| {
             let (w, h) = win.content_size();
+            let scale = win.scale_factor() as f32;
+            let w = (w as f32 * scale).round() as usize;
+            let h = (h as f32 * scale).round() as usize;
             let frame = &mut frame_count;
             let pixels = win.framebuffer();
 
