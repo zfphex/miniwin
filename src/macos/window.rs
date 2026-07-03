@@ -23,6 +23,7 @@ pub struct Window {
     height: usize,
     vsync: VsyncTracker,
     event_queue: std::collections::VecDeque<Event>,
+    use_gpu: bool,
     _marker: std::marker::PhantomData<*mut ()>,
 }
 
@@ -39,6 +40,7 @@ pub fn create_window(
     position: Option<(i32, i32)>,
     width: i32,
     height: i32,
+    use_gpu: bool,
     style: WindowStyle,
 ) -> std::pin::Pin<Box<Window>> {
     let position = match position {
@@ -49,310 +51,289 @@ pub fn create_window(
         None => WindowPosition::Centered,
     };
 
-    Box::pin(Window::new(
-        title,
-        width as f64,
-        height as f64,
-        style,
-        FullscreenMode::None,
-        position,
-    ))
-}
+    let fullscreen = FullscreenMode::None;
+    let width = width as f64;
+    let height = height as f64;
 
-impl Window {
-    fn new(
-        title: &str,
-        width: f64,
-        height: f64,
-        style: WindowStyle,
-        fullscreen: FullscreenMode,
-        position: WindowPosition,
-    ) -> Self {
-        #[cfg(debug_assertions)]
-        assert_main_thread();
+    #[cfg(debug_assertions)]
+    assert_main_thread();
 
-        unsafe {
-            APP_INIT.call_once(|| {
-                let ns_app = msg_send_id(
-                    objc_getClass(b"NSApplication\0".as_ptr() as *const _),
-                    sel_registerName(b"sharedApplication\0".as_ptr() as *const _),
-                );
+    unsafe {
+        APP_INIT.call_once(|| {
+            let ns_app = msg_send_id(
+                objc_getClass(b"NSApplication\0".as_ptr() as *const _),
+                sel_registerName(b"sharedApplication\0".as_ptr() as *const _),
+            );
 
-                let set_policy_sel =
-                    sel_registerName(b"setActivationPolicy:\0".as_ptr() as *const _);
-                let set_policy: unsafe extern "C" fn(
-                    id,
-                    SEL,
-                    NSApplicationActivationPolicy,
-                ) -> BOOL = std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
-                set_policy(ns_app, set_policy_sel, NSApplicationActivationPolicyRegular);
+            let set_policy_sel = sel_registerName(b"setActivationPolicy:\0".as_ptr() as *const _);
+            let set_policy: unsafe extern "C" fn(id, SEL, NSApplicationActivationPolicy) -> BOOL =
+                std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+            set_policy(ns_app, set_policy_sel, NSApplicationActivationPolicyRegular);
 
-                // Register delegate and view classes
-                register_delegate_class();
-                register_view_class();
+            // Register delegate and view classes
+            register_delegate_class();
+            register_view_class();
 
-                // Setup menu bar
-                let alloc_sel = sel_registerName(b"alloc\0".as_ptr() as *const _);
-                let init_sel = sel_registerName(b"init\0".as_ptr() as *const _);
+            // Setup menu bar
+            let alloc_sel = sel_registerName(b"alloc\0".as_ptr() as *const _);
+            let init_sel = sel_registerName(b"init\0".as_ptr() as *const _);
 
-                let main_menu = msg_send_id(
-                    msg_send_id(objc_getClass(b"NSMenu\0".as_ptr() as *const _), alloc_sel),
-                    init_sel,
-                );
+            let main_menu = msg_send_id(
+                msg_send_id(objc_getClass(b"NSMenu\0".as_ptr() as *const _), alloc_sel),
+                init_sel,
+            );
 
-                let app_menu_item = msg_send_id(
-                    msg_send_id(
-                        objc_getClass(b"NSMenuItem\0".as_ptr() as *const _),
-                        alloc_sel,
-                    ),
-                    init_sel,
-                );
-
-                msg_send_id_id_void(
-                    main_menu,
-                    sel_registerName(b"addItem:\0".as_ptr() as *const _),
-                    app_menu_item,
-                );
-
-                let app_menu = msg_send_id(
-                    msg_send_id(objc_getClass(b"NSMenu\0".as_ptr() as *const _), alloc_sel),
-                    init_sel,
-                );
-
-                msg_send_id_id_void(
-                    app_menu_item,
-                    sel_registerName(b"setSubmenu:\0".as_ptr() as *const _),
-                    app_menu,
-                );
-
-                let quit_title = nsstring("Quit");
-                let quit_sel = sel_registerName(b"terminate:\0".as_ptr() as *const _);
-                let key = nsstring("q");
-                let quit_item_alloc = msg_send_id(
+            let app_menu_item = msg_send_id(
+                msg_send_id(
                     objc_getClass(b"NSMenuItem\0".as_ptr() as *const _),
                     alloc_sel,
-                );
+                ),
+                init_sel,
+            );
 
-                let init_quit_func: unsafe extern "C" fn(id, SEL, id, SEL, id) -> id =
-                    std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
-                let quit_item = init_quit_func(
-                    quit_item_alloc,
-                    sel_registerName(b"initWithTitle:action:keyEquivalent:\0".as_ptr() as *const _),
-                    quit_title,
-                    quit_sel,
-                    key,
-                );
+            msg_send_id_id_void(
+                main_menu,
+                sel_registerName(b"addItem:\0".as_ptr() as *const _),
+                app_menu_item,
+            );
 
-                msg_send_id_id_void(
-                    app_menu,
-                    sel_registerName(b"addItem:\0".as_ptr() as *const _),
-                    quit_item,
-                );
+            let app_menu = msg_send_id(
+                msg_send_id(objc_getClass(b"NSMenu\0".as_ptr() as *const _), alloc_sel),
+                init_sel,
+            );
 
-                msg_send_id_id_void(
-                    ns_app,
-                    sel_registerName(b"setMainMenu:\0".as_ptr() as *const _),
-                    main_menu,
-                );
+            msg_send_id_id_void(
+                app_menu_item,
+                sel_registerName(b"setSubmenu:\0".as_ptr() as *const _),
+                app_menu,
+            );
 
-                // Finish launching
-                msg_send_id(
-                    ns_app,
-                    sel_registerName(b"finishLaunching\0".as_ptr() as *const _),
-                );
-            });
+            let quit_title = nsstring("Quit");
+            let quit_sel = sel_registerName(b"terminate:\0".as_ptr() as *const _);
+            let key = nsstring("q");
+            let quit_item_alloc = msg_send_id(
+                objc_getClass(b"NSMenuItem\0".as_ptr() as *const _),
+                alloc_sel,
+            );
 
-            let alloc_sel = sel_registerName(b"alloc\0".as_ptr() as *const _);
+            let init_quit_func: unsafe extern "C" fn(id, SEL, id, SEL, id) -> id =
+                std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+            let quit_item = init_quit_func(
+                quit_item_alloc,
+                sel_registerName(b"initWithTitle:action:keyEquivalent:\0".as_ptr() as *const _),
+                quit_title,
+                quit_sel,
+                key,
+            );
 
-            let mut final_width = width;
-            let mut final_height = height;
+            msg_send_id_id_void(
+                app_menu,
+                sel_registerName(b"addItem:\0".as_ptr() as *const _),
+                quit_item,
+            );
 
-            let mut style_mask = match style {
-                WindowStyle::Standard => {
-                    NSWindowStyleMaskTitled
-                        | NSWindowStyleMaskClosable
-                        | NSWindowStyleMaskMiniaturizable
-                        | NSWindowStyleMaskResizable
-                }
-                WindowStyle::Borderless | WindowStyle::Transparent => NSWindowStyleMaskBorderless,
-            };
+            msg_send_id_id_void(
+                ns_app,
+                sel_registerName(b"setMainMenu:\0".as_ptr() as *const _),
+                main_menu,
+            );
 
-            if fullscreen == FullscreenMode::Workspace {
-                style_mask |= NSWindowStyleMaskFullScreen;
+            // Finish launching
+            msg_send_id(
+                ns_app,
+                sel_registerName(b"finishLaunching\0".as_ptr() as *const _),
+            );
+        });
+
+        let alloc_sel = sel_registerName(b"alloc\0".as_ptr() as *const _);
+
+        let mut final_width = width;
+        let mut final_height = height;
+
+        let mut style_mask = match style {
+            WindowStyle::Standard => {
+                NSWindowStyleMaskTitled
+                    | NSWindowStyleMaskClosable
+                    | NSWindowStyleMaskMiniaturizable
+                    | NSWindowStyleMaskResizable
             }
+            WindowStyle::Borderless | WindowStyle::Transparent => NSWindowStyleMaskBorderless,
+        };
 
-            if fullscreen == FullscreenMode::MonitorFit {
+        if fullscreen == FullscreenMode::Workspace {
+            style_mask |= NSWindowStyleMaskFullScreen;
+        }
+
+        if fullscreen == FullscreenMode::MonitorFit {
+            let main_screen = msg_send_id(
+                objc_getClass(b"NSScreen\0".as_ptr() as *const _),
+                sel_registerName(b"mainScreen\0".as_ptr() as *const _),
+            );
+            let frame_sel = sel_registerName(b"frame\0".as_ptr() as *const _);
+            let screen_rect = msg_send_rect(main_screen, frame_sel);
+            final_width = screen_rect.size.width;
+            final_height = screen_rect.size.height;
+            style_mask = NSWindowStyleMaskBorderless;
+        }
+
+        let rect = match (fullscreen, position) {
+            (FullscreenMode::None, WindowPosition::TopLeft { x, y }) => {
                 let main_screen = msg_send_id(
                     objc_getClass(b"NSScreen\0".as_ptr() as *const _),
                     sel_registerName(b"mainScreen\0".as_ptr() as *const _),
                 );
-                let frame_sel = sel_registerName(b"frame\0".as_ptr() as *const _);
-                let screen_rect = msg_send_rect(main_screen, frame_sel);
-                final_width = screen_rect.size.width;
-                final_height = screen_rect.size.height;
-                style_mask = NSWindowStyleMaskBorderless;
+                let visible_frame_sel = sel_registerName(b"visibleFrame\0".as_ptr() as *const _);
+                let screen_rect = msg_send_rect(main_screen, visible_frame_sel);
+                let origin_y = screen_rect.origin.y + screen_rect.size.height - y - final_height;
+
+                NSRect::new(
+                    screen_rect.origin.x + x,
+                    origin_y,
+                    final_width,
+                    final_height,
+                )
             }
+            _ => NSRect::new(0.0, 0.0, final_width, final_height),
+        };
+        let window_class = objc_getClass(b"NSWindow\0".as_ptr() as *const _);
+        let window_alloc = msg_send_id(window_class, alloc_sel);
 
-            let rect = match (fullscreen, position) {
-                (FullscreenMode::None, WindowPosition::TopLeft { x, y }) => {
-                    let main_screen = msg_send_id(
-                        objc_getClass(b"NSScreen\0".as_ptr() as *const _),
-                        sel_registerName(b"mainScreen\0".as_ptr() as *const _),
-                    );
-                    let visible_frame_sel =
-                        sel_registerName(b"visibleFrame\0".as_ptr() as *const _);
-                    let screen_rect = msg_send_rect(main_screen, visible_frame_sel);
-                    let origin_y =
-                        screen_rect.origin.y + screen_rect.size.height - y - final_height;
+        let init_window_func: unsafe extern "C" fn(
+            id,
+            SEL,
+            NSRect,
+            NSWindowStyleMask,
+            NSBackingStoreType,
+            BOOL,
+        ) -> id = std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
 
-                    NSRect::new(
-                        screen_rect.origin.x + x,
-                        origin_y,
-                        final_width,
-                        final_height,
-                    )
-                }
-                _ => NSRect::new(0.0, 0.0, final_width, final_height),
-            };
-            let window_class = objc_getClass(b"NSWindow\0".as_ptr() as *const _);
-            let window_alloc = msg_send_id(window_class, alloc_sel);
+        let ns_window = init_window_func(
+            window_alloc,
+            sel_registerName(b"initWithContentRect:styleMask:backing:defer:\0".as_ptr() as *const _),
+            rect,
+            style_mask,
+            NSBackingStoreBuffered,
+            NO,
+        );
 
-            let init_window_func: unsafe extern "C" fn(
-                id,
-                SEL,
-                NSRect,
-                NSWindowStyleMask,
-                NSBackingStoreType,
-                BOOL,
-            ) -> id = std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+        if fullscreen == FullscreenMode::None && position == WindowPosition::Centered {
+            msg_send_void(
+                ns_window,
+                sel_registerName(b"center\0".as_ptr() as *const _),
+            );
+        }
 
-            let ns_window = init_window_func(
-                window_alloc,
-                sel_registerName(
-                    b"initWithContentRect:styleMask:backing:defer:\0".as_ptr() as *const _
-                ),
-                rect,
-                style_mask,
-                NSBackingStoreBuffered,
+        if style == WindowStyle::Transparent {
+            msg_send_id_bool_void(
+                ns_window,
+                sel_registerName(b"setOpaque:\0".as_ptr() as *const _),
                 NO,
             );
-
-            if fullscreen == FullscreenMode::None && position == WindowPosition::Centered {
-                msg_send_void(
-                    ns_window,
-                    sel_registerName(b"center\0".as_ptr() as *const _),
-                );
-            }
-
-            if style == WindowStyle::Transparent {
-                msg_send_id_bool_void(
-                    ns_window,
-                    sel_registerName(b"setOpaque:\0".as_ptr() as *const _),
-                    NO,
-                );
-                let color_class = objc_getClass(b"NSColor\0".as_ptr() as *const _);
-                let clear_color = msg_send_id(
-                    color_class,
-                    sel_registerName(b"clearColor\0".as_ptr() as *const _),
-                );
-                msg_send_id_id_void(
-                    ns_window,
-                    sel_registerName(b"setBackgroundColor:\0".as_ptr() as *const _),
-                    clear_color,
-                );
-            }
-
-            let title_ns = nsstring(title);
+            let color_class = objc_getClass(b"NSColor\0".as_ptr() as *const _);
+            let clear_color = msg_send_id(
+                color_class,
+                sel_registerName(b"clearColor\0".as_ptr() as *const _),
+            );
             msg_send_id_id_void(
                 ns_window,
-                sel_registerName(b"setTitle:\0".as_ptr() as *const _),
-                title_ns,
+                sel_registerName(b"setBackgroundColor:\0".as_ptr() as *const _),
+                clear_color,
             );
-
-            // Instantiate our custom RustView class
-            let view_class = register_view_class();
-            let view_alloc = msg_send_id(view_class, alloc_sel);
-            let init_view_func: unsafe extern "C" fn(id, SEL, NSRect) -> id =
-                std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
-            let ns_view = init_view_func(
-                view_alloc,
-                sel_registerName(b"initWithFrame:\0".as_ptr() as *const _),
-                rect,
-            );
-
-            msg_send_id_bool_void(
-                ns_view,
-                sel_registerName(b"setWantsLayer:\0".as_ptr() as *const _),
-                YES,
-            );
-
-            msg_send_id_id_void(
-                ns_window,
-                sel_registerName(b"setContentView:\0".as_ptr() as *const _),
-                ns_view,
-            );
-
-            if fullscreen == FullscreenMode::Workspace {
-                // NSWindowCollectionBehaviorFullScreenPrimary = 1 << 7
-                msg_send_id_usize_void(
-                    ns_window,
-                    sel_registerName(b"setCollectionBehavior:\0".as_ptr() as *const _),
-                    1 << 7,
-                );
-            }
-
-            // Register content view for Drag & Drop file drops
-            let pb_type = nsstring("public.file-url");
-            let array_class = objc_getClass(b"NSArray\0".as_ptr() as *const _);
-            let array_sel = sel_registerName(b"arrayWithObject:\0".as_ptr() as *const _);
-            let array_func: unsafe extern "C" fn(id, SEL, id) -> id =
-                std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
-            let types_array = array_func(array_class, array_sel, pb_type);
-
-            let register_sel = sel_registerName(b"registerForDraggedTypes:\0".as_ptr() as *const _);
-            let register_func: unsafe extern "C" fn(id, SEL, id) =
-                std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
-            register_func(ns_view, register_sel, types_array);
-
-            // Create and set delegate
-            let delegate_class = register_delegate_class();
-            let delegate_alloc = msg_send_id(
-                delegate_class,
-                sel_registerName(b"alloc\0".as_ptr() as *const _),
-            );
-            let ns_delegate = msg_send_id(
-                delegate_alloc,
-                sel_registerName(b"init\0".as_ptr() as *const _),
-            );
-
-            msg_send_id_id_void(
-                ns_window,
-                sel_registerName(b"setDelegate:\0".as_ptr() as *const _),
-                ns_delegate,
-            );
-
-            msg_send_id_id_void(
-                ns_window,
-                sel_registerName(b"makeKeyAndOrderFront:\0".as_ptr() as *const _),
-                nil,
-            );
-
-            let vsync = VsyncTracker::new();
-
-            Window {
-                ns_window,
-                ns_view,
-                ns_delegate,
-                vsync,
-                event_queue: std::collections::VecDeque::new(),
-                buffer: Vec::new(),
-                width: 0,
-                height: 0,
-                _marker: std::marker::PhantomData,
-            }
         }
-    }
 
+        let title_ns = nsstring(title);
+        msg_send_id_id_void(
+            ns_window,
+            sel_registerName(b"setTitle:\0".as_ptr() as *const _),
+            title_ns,
+        );
+
+        // Instantiate our custom RustView class
+        let view_class = register_view_class();
+        let view_alloc = msg_send_id(view_class, alloc_sel);
+        let init_view_func: unsafe extern "C" fn(id, SEL, NSRect) -> id =
+            std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+        let ns_view = init_view_func(
+            view_alloc,
+            sel_registerName(b"initWithFrame:\0".as_ptr() as *const _),
+            rect,
+        );
+
+        msg_send_id_bool_void(
+            ns_view,
+            sel_registerName(b"setWantsLayer:\0".as_ptr() as *const _),
+            YES,
+        );
+
+        msg_send_id_id_void(
+            ns_window,
+            sel_registerName(b"setContentView:\0".as_ptr() as *const _),
+            ns_view,
+        );
+
+        if fullscreen == FullscreenMode::Workspace {
+            // NSWindowCollectionBehaviorFullScreenPrimary = 1 << 7
+            msg_send_id_usize_void(
+                ns_window,
+                sel_registerName(b"setCollectionBehavior:\0".as_ptr() as *const _),
+                1 << 7,
+            );
+        }
+
+        // Register content view for Drag & Drop file drops
+        let pb_type = nsstring("public.file-url");
+        let array_class = objc_getClass(b"NSArray\0".as_ptr() as *const _);
+        let array_sel = sel_registerName(b"arrayWithObject:\0".as_ptr() as *const _);
+        let array_func: unsafe extern "C" fn(id, SEL, id) -> id =
+            std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+        let types_array = array_func(array_class, array_sel, pb_type);
+
+        let register_sel = sel_registerName(b"registerForDraggedTypes:\0".as_ptr() as *const _);
+        let register_func: unsafe extern "C" fn(id, SEL, id) =
+            std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+        register_func(ns_view, register_sel, types_array);
+
+        // Create and set delegate
+        let delegate_class = register_delegate_class();
+        let delegate_alloc = msg_send_id(
+            delegate_class,
+            sel_registerName(b"alloc\0".as_ptr() as *const _),
+        );
+        let ns_delegate = msg_send_id(
+            delegate_alloc,
+            sel_registerName(b"init\0".as_ptr() as *const _),
+        );
+
+        msg_send_id_id_void(
+            ns_window,
+            sel_registerName(b"setDelegate:\0".as_ptr() as *const _),
+            ns_delegate,
+        );
+
+        msg_send_id_id_void(
+            ns_window,
+            sel_registerName(b"makeKeyAndOrderFront:\0".as_ptr() as *const _),
+            nil,
+        );
+
+        let vsync = VsyncTracker::new();
+
+        Box::pin(Window {
+            ns_window,
+            ns_view,
+            ns_delegate,
+            vsync,
+            event_queue: std::collections::VecDeque::new(),
+            buffer: Vec::new(),
+            width: 0,
+            height: 0,
+            use_gpu,
+            _marker: std::marker::PhantomData,
+        })
+    }
+}
+
+impl Window {
     pub fn make_key_and_order_front(&self) {
         unsafe {
             msg_send_id_id_void(
@@ -379,7 +360,11 @@ impl crate::Window for Window {
         &mut self.buffer
     }
 
-    fn present_framebuffer(&self) {
+    fn present(&self) {
+        if self.use_gpu {
+            return;
+        }
+
         let (w, h) = (self.width, self.height);
         if w == 0 || h == 0 || self.buffer.is_empty() {
             return;
@@ -425,11 +410,6 @@ impl crate::Window for Window {
             CFRelease(provider as CFTypeRef);
             CFRelease(color_space as CFTypeRef);
         }
-    }
-
-    fn present_gpu(&self) {
-        // Metal handles this itself.
-        // VSync at the end of the frame instead.
     }
 
     fn scale_factor(&self) -> f64 {
@@ -704,8 +684,8 @@ impl Drop for Window {
 
 unsafe extern "C" fn release_provider_data(
     _info: *mut std::ffi::c_void,
-    data: *const std::ffi::c_void,
-    size: usize,
+    _data: *const std::ffi::c_void,
+    _size: usize,
 ) {
     // NO-OP.
     // The buffer is owned by the Rust `Window` struct.

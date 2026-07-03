@@ -2,7 +2,7 @@ use miniwin::*;
 
 fn main() {
     println!("Initializing Window...");
-    let mut window = create_window("Demo", None, 800, 600, WindowStyle::Standard);
+    let mut window = create_window("Demo", None, 800, 600, false, WindowStyle::Standard);
 
     println!("Demo Controls:");
     println!("  [C] - Cycle cursor icon (Arrow -> IBeam -> PointingHand -> Crosshair)");
@@ -44,7 +44,7 @@ fn main() {
             }
             *frame += 2;
 
-            win.present_framebuffer();
+            win.present();
         });
 
         // Unified event retrieval

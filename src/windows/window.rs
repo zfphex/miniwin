@@ -7,6 +7,7 @@ pub fn create_window(
     position: Option<(i32, i32)>,
     width: i32,
     height: i32,
+    use_gpu: bool,
     style: WindowStyle,
 ) -> std::pin::Pin<Box<Window>> {
     unsafe {
@@ -98,7 +99,11 @@ pub fn create_window(
             hwnd,
             dc,
             display_scale: scale,
-            buffer: vec![0u32; area.width * area.height],
+            buffer: if use_gpu {
+                Vec::new()
+            } else {
+                vec![0u32; area.width * area.height]
+            },
             bitmap: BITMAPINFO::new(area.width as i32, area.height as i32),
             quit: false,
             mouse_position: Rect::default(),
@@ -115,6 +120,7 @@ pub fn create_window(
             render_callback: std::ptr::null_mut(),
             render_executor: None,
             event_queue: VecDeque::new(),
+            use_gpu,
         };
 
         //Safety: This *should* be pinned.
@@ -151,64 +157,65 @@ pub struct Window {
     pub render_callback: *mut std::ffi::c_void,
     pub render_executor: Option<unsafe fn(*mut std::ffi::c_void, &mut Window)>,
     pub event_queue: VecDeque<Event>,
+    pub use_gpu: bool,
 }
 
 impl Window {
-    pub const unsafe fn empty() -> Self {
-        Self {
-            hwnd: 0,
-            display_scale: 1.0,
-            dc: unsafe { std::mem::zeroed() },
-            buffer: Vec::new(),
-            bitmap: BITMAPINFO {
-                header: BITMAPINFOHEADER {
-                    size: 0,
-                    width: 0,
-                    height: 0,
-                    planes: 0,
-                    bit_count: 0,
-                    compression: 0,
-                    size_image: 0,
-                    x_pels_per_meter: 0,
-                    y_pels_per_meter: 0,
-                    clr_used: 0,
-                    clr_important: 0,
-                },
-                colors: [RGBQUAD {
-                    blue: 0,
-                    green: 0,
-                    red: 0,
-                    reserved: 0,
-                }; 1],
-            },
-            area: Rect {
-                x: 0,
-                y: 0,
-                width: 0,
-                height: 0,
-            },
-            quit: false,
-            mouse_position: Rect {
-                x: 0,
-                y: 0,
-                width: 0,
-                height: 0,
-            },
-            left_mouse: MouseButtonState::new(),
-            input: InputState::new(),
-            right_mouse: MouseButtonState::new(),
-            middle_mouse: MouseButtonState::new(),
-            mouse_4: MouseButtonState::new(),
-            mouse_5: MouseButtonState::new(),
-            tray: MouseButtonState::new(),
-            hglrc: unsafe { std::mem::zeroed() },
-            focused: false,
-            needs_frame_advance: false,
-            render_callback: std::ptr::null_mut(),
-            render_executor: None,
-            event_queue: VecDeque::new(),
-        }
-    }
+    // pub const unsafe fn empty() -> Self {
+    //     Self {
+    //         hwnd: 0,
+    //         display_scale: 1.0,
+    //         dc: unsafe { std::mem::zeroed() },
+    //         buffer: Vec::new(),
+    //         bitmap: BITMAPINFO {
+    //             header: BITMAPINFOHEADER {
+    //                 size: 0,
+    //                 width: 0,
+    //                 height: 0,
+    //                 planes: 0,
+    //                 bit_count: 0,
+    //                 compression: 0,
+    //                 size_image: 0,
+    //                 x_pels_per_meter: 0,
+    //                 y_pels_per_meter: 0,
+    //                 clr_used: 0,
+    //                 clr_important: 0,
+    //             },
+    //             colors: [RGBQUAD {
+    //                 blue: 0,
+    //                 green: 0,
+    //                 red: 0,
+    //                 reserved: 0,
+    //             }; 1],
+    //         },
+    //         area: Rect {
+    //             x: 0,
+    //             y: 0,
+    //             width: 0,
+    //             height: 0,
+    //         },
+    //         quit: false,
+    //         mouse_position: Rect {
+    //             x: 0,
+    //             y: 0,
+    //             width: 0,
+    //             height: 0,
+    //         },
+    //         left_mouse: MouseButtonState::new(),
+    //         input: InputState::new(),
+    //         right_mouse: MouseButtonState::new(),
+    //         middle_mouse: MouseButtonState::new(),
+    //         mouse_4: MouseButtonState::new(),
+    //         mouse_5: MouseButtonState::new(),
+    //         tray: MouseButtonState::new(),
+    //         hglrc: unsafe { std::mem::zeroed() },
+    //         focused: false,
+    //         needs_frame_advance: false,
+    //         render_callback: std::ptr::null_mut(),
+    //         render_executor: None,
+    //         event_queue: VecDeque::new(),
+    //     }
+    // }
 
     /// Safety: Mutiple calls to this is unsafe.
     pub unsafe fn init_wgl_debug(&mut self) {
@@ -501,9 +508,12 @@ impl crate::Window for Window {
     }
 
     /// Only works for framebuffers.
-    /// For OpenGL use `window.set_swap_interval(1)`
-    /// Then at the end of the frame call window
+    /// For OpenGL call `window.set_swap_interval(1)` once after creation.
     fn wait_for_vsync(&self) {
+        if self.use_gpu {
+            return;
+        }
+
         unsafe { DwmFlush() };
     }
 
@@ -520,7 +530,12 @@ impl crate::Window for Window {
         &mut self.buffer
     }
 
-    fn present_framebuffer(&self) {
+    fn present(&self) {
+        if self.use_gpu {
+            unsafe { SwapBuffers(self.dc) };
+            return;
+        }
+
         if self.area.width == 0 || self.area.height == 0 || self.buffer.is_empty() {
             return;
         }
@@ -627,10 +642,6 @@ impl crate::Window for Window {
 
     fn set_clipboard_text(&self, text: &str) {
         copy_to_clipboard(text);
-    }
-
-    fn present_gpu(&self) {
-        unsafe { SwapBuffers(self.dc) };
     }
 }
 
