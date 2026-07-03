@@ -12,7 +12,21 @@ pub trait Window {
     fn draw<F>(&mut self, render: F)
     where
         F: FnMut(&mut Self);
-    fn event(&mut self) -> Option<Event>;
+    fn open(&self) -> bool;
+    fn close(&mut self);
+    fn is_down(&self, key: Key) -> bool;
+    fn is_up(&self, key: Key) -> bool;
+    fn pressed(&self, key: Key) -> bool;
+    fn released(&self, key: Key) -> bool;
+    fn pressed_keys(&self) -> &[Key];
+    fn mouse_down(&self, button: MouseButton) -> bool;
+    fn mouse_pressed(&self, button: MouseButton) -> bool;
+    fn mouse_released(&self, button: MouseButton) -> bool;
+    fn mouse_pos(&self) -> (f64, f64);
+    fn text_input(&self) -> &[char];
+    fn dropped_files(&self) -> &[std::path::PathBuf];
+    fn scroll_delta(&self) -> (f64, f64);
+    fn modifiers(&self) -> Modifiers;
     fn framebuffer(&mut self) -> &mut [u32];
     fn present(&self);
     fn scale_factor(&self) -> f64;
@@ -265,55 +279,162 @@ pub struct Modifiers {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Event {
-    CloseRequested,
-    Resized {
-        width: f64,
-        height: f64,
-        physical_width: usize,
-        physical_height: usize,
-    },
-    KeyDown {
-        key: Key,
-        keycode: u16,
-        modifiers: Modifiers,
-    },
-    KeyUp {
-        key: Key,
-        keycode: u16,
-        modifiers: Modifiers,
-    },
-    MouseDown {
-        button: MouseButton,
-        x: f64,
-        y: f64,
-        modifiers: Modifiers,
-    },
-    MouseUp {
-        button: MouseButton,
-        x: f64,
-        y: f64,
-        modifiers: Modifiers,
-    },
-    MouseMoved {
-        x: f64,
-        y: f64,
-        modifiers: Modifiers,
-    },
-    MouseDragged {
-        button: MouseButton,
-        x: f64,
-        y: f64,
-        modifiers: Modifiers,
-    },
-    Scroll {
-        delta_x: f64,
-        delta_y: f64,
-        modifiers: Modifiers,
-    },
-    ReceivedCharacter(char),
-    DroppedFiles(Vec<std::path::PathBuf>),
-    Quit,
+pub(crate) struct InputState {
+    current_keys: [bool; 256],
+    previous_keys: [bool; 256],
+    current_mouse: Vec<MouseButton>,
+    previous_mouse: Vec<MouseButton>,
+    pressed_keys: Vec<Key>,
+    mouse_x: f64,
+    mouse_y: f64,
+    scroll_delta: (f64, f64),
+    modifiers: Modifiers,
+    text_input: Vec<char>,
+    dropped_files: Vec<std::path::PathBuf>,
+}
+
+impl InputState {
+    pub(crate) fn new() -> Self {
+        Self {
+            current_keys: [false; 256],
+            previous_keys: [false; 256],
+            current_mouse: Vec::new(),
+            previous_mouse: Vec::new(),
+            pressed_keys: Vec::new(),
+            mouse_x: 0.0,
+            mouse_y: 0.0,
+            scroll_delta: (0.0, 0.0),
+            modifiers: Modifiers::default(),
+            text_input: Vec::new(),
+            dropped_files: Vec::new(),
+        }
+    }
+
+    pub(crate) fn begin_frame(&mut self) {
+        self.previous_keys.copy_from_slice(&self.current_keys);
+        self.previous_mouse.clone_from(&self.current_mouse);
+        self.pressed_keys.clear();
+        self.text_input.clear();
+        self.dropped_files.clear();
+        self.scroll_delta = (0.0, 0.0);
+    }
+
+    pub fn is_down(&self, key: Key) -> bool {
+        self.key_index(key)
+            .map(|index| self.current_keys[index])
+            .unwrap_or(false)
+    }
+
+    pub fn is_up(&self, key: Key) -> bool {
+        !self.is_down(key)
+    }
+
+    pub fn pressed(&self, key: Key) -> bool {
+        self.key_index(key)
+            .map(|index| self.current_keys[index] && !self.previous_keys[index])
+            .unwrap_or(false)
+    }
+
+    pub fn released(&self, key: Key) -> bool {
+        self.key_index(key)
+            .map(|index| !self.current_keys[index] && self.previous_keys[index])
+            .unwrap_or(false)
+    }
+
+    pub fn pressed_keys(&self) -> &[Key] {
+        &self.pressed_keys
+    }
+
+    pub fn mouse_down(&self, button: MouseButton) -> bool {
+        self.current_mouse.contains(&button)
+    }
+
+    pub fn mouse_pressed(&self, button: MouseButton) -> bool {
+        self.current_mouse.contains(&button) && !self.previous_mouse.contains(&button)
+    }
+
+    pub fn mouse_released(&self, button: MouseButton) -> bool {
+        !self.current_mouse.contains(&button) && self.previous_mouse.contains(&button)
+    }
+
+    pub fn mouse_pos(&self) -> (f64, f64) {
+        (self.mouse_x, self.mouse_y)
+    }
+
+    pub fn text_input(&self) -> &[char] {
+        &self.text_input
+    }
+
+    pub fn dropped_files(&self) -> &[std::path::PathBuf] {
+        &self.dropped_files
+    }
+
+    pub fn scroll_delta(&self) -> (f64, f64) {
+        self.scroll_delta
+    }
+
+    pub fn modifiers(&self) -> Modifiers {
+        self.modifiers
+    }
+
+    pub(crate) fn set_key_down(&mut self, key: Key) {
+        let Some(index) = self.key_index(key) else {
+            return;
+        };
+
+        if !self.current_keys[index] {
+            self.pressed_keys.push(key);
+        }
+        self.current_keys[index] = true;
+    }
+
+    pub(crate) fn set_key_up(&mut self, key: Key) {
+        if let Some(index) = self.key_index(key) {
+            self.current_keys[index] = false;
+        }
+    }
+
+    pub(crate) fn set_mouse_down(&mut self, button: MouseButton) {
+        if !self.current_mouse.contains(&button) {
+            self.current_mouse.push(button);
+        }
+    }
+
+    pub(crate) fn set_mouse_up(&mut self, button: MouseButton) {
+        self.current_mouse.retain(|&current| current != button);
+    }
+
+    pub(crate) fn set_mouse_pos(&mut self, x: f64, y: f64) {
+        self.mouse_x = x;
+        self.mouse_y = y;
+    }
+
+    pub(crate) fn add_scroll(&mut self, delta_x: f64, delta_y: f64) {
+        self.scroll_delta.0 += delta_x;
+        self.scroll_delta.1 += delta_y;
+    }
+
+    pub(crate) fn add_text(&mut self, c: char) {
+        if !c.is_control() {
+            self.text_input.push(c);
+        }
+    }
+
+    pub(crate) fn add_dropped_files<I>(&mut self, files: I)
+    where
+        I: IntoIterator<Item = std::path::PathBuf>,
+    {
+        self.dropped_files.extend(files);
+    }
+
+    pub(crate) fn set_modifiers(&mut self, modifiers: Modifiers) {
+        self.modifiers = modifiers;
+    }
+
+    fn key_index(&self, key: Key) -> Option<usize> {
+        let index = key.vk_code();
+        (index < self.current_keys.len()).then_some(index)
+    }
 }
 
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]

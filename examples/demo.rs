@@ -13,8 +13,6 @@ fn main() {
     println!("  [Drop Files] - Drop files onto the window to print their paths");
 
     let mut frame_count = 0;
-    let mut running = true;
-
     let mut cursor_index = 0;
     let cursor_icons = [
         CursorIcon::Arrow,
@@ -28,7 +26,7 @@ fn main() {
     let mut cursor_visible = true;
     let mut cursor_grabbed = false;
 
-    while running {
+    while window.open() {
         window.draw(|win| {
             let (w, h) = win.content_size();
             let frame = &mut frame_count;
@@ -47,62 +45,50 @@ fn main() {
             win.present();
         });
 
-        // Unified event retrieval
-        let mut events = Vec::new();
-        while let Some(evt) = window.event() {
-            events.push(evt);
+        if window.pressed(Key::Escape) {
+            window.close();
         }
 
-        for event in events {
-            match event {
-                Event::Quit | Event::CloseRequested => {
-                    running = false;
-                }
-                Event::KeyDown {
-                    key: Key::Escape, ..
-                } => {
-                    running = false;
-                }
-                Event::ReceivedCharacter(c) => {
-                    println!("Character Received: {:?}", c);
+        for &c in window.text_input() {
+            println!("Character Received: {:?}", c);
+        }
 
-                    match c {
-                        'c' | 'C' => {
-                            cursor_index = (cursor_index + 1) % cursor_icons.len();
-                            let icon = cursor_icons[cursor_index];
-                            window.set_cursor_icon(icon);
-                            println!("Set cursor shape to {:?}", icon);
-                        }
-                        'v' | 'V' => {
-                            cursor_visible = !cursor_visible;
-                            window.set_cursor_visible(cursor_visible);
-                            println!("Set cursor visibility: {}", cursor_visible);
-                        }
-                        'g' | 'G' => {
-                            cursor_grabbed = !cursor_grabbed;
-                            window.set_cursor_grab(cursor_grabbed);
-                            println!("Set cursor grab: {}", cursor_grabbed);
-                        }
-                        'p' | 'P' => {
-                            let text = "Hello from miniwin Clipboard!";
-                            window.set_clipboard_text(text);
-                            println!("Copied text to clipboard: {:?}", text);
-                        }
-                        'o' | 'O' => {
-                            if let Some(text) = window.get_clipboard_text() {
-                                println!("Read text from clipboard: {:?}", text);
-                            }
-                        }
-                        _ => {}
-                    }
+        for &key in window.pressed_keys() {
+            match key {
+                Key::Char('C') => {
+                    cursor_index = (cursor_index + 1) % cursor_icons.len();
+                    let icon = cursor_icons[cursor_index];
+                    window.set_cursor_icon(icon);
+                    println!("Set cursor shape to {:?}", icon);
                 }
-                Event::DroppedFiles(files) => {
-                    println!("Dropped Files:");
-                    for file in files {
-                        println!("  - {:?}", file);
+                Key::Char('V') => {
+                    cursor_visible = !cursor_visible;
+                    window.set_cursor_visible(cursor_visible);
+                    println!("Set cursor visibility: {}", cursor_visible);
+                }
+                Key::Char('G') => {
+                    cursor_grabbed = !cursor_grabbed;
+                    window.set_cursor_grab(cursor_grabbed);
+                    println!("Set cursor grab: {}", cursor_grabbed);
+                }
+                Key::Char('P') => {
+                    let text = "Hello from miniwin Clipboard!";
+                    window.set_clipboard_text(text);
+                    println!("Copied text to clipboard: {:?}", text);
+                }
+                Key::Char('O') => {
+                    if let Some(text) = window.get_clipboard_text() {
+                        println!("Read text from clipboard: {:?}", text);
                     }
                 }
                 _ => {}
+            }
+        }
+
+        if !window.dropped_files().is_empty() {
+            println!("Dropped Files:");
+            for file in window.dropped_files() {
+                println!("  - {:?}", file);
             }
         }
 

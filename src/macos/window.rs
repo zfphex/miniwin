@@ -1,6 +1,5 @@
 #![allow(non_upper_case_globals)]
 
-use crate::event::*;
 use crate::ffi::*;
 use crate::objc::*;
 use crate::vsync::VsyncTracker;
@@ -22,7 +21,8 @@ pub struct Window {
     width: usize,
     height: usize,
     vsync: VsyncTracker,
-    event_queue: std::collections::VecDeque<Event>,
+    input: InputState,
+    open: bool,
     use_gpu: bool,
     _marker: std::marker::PhantomData<*mut ()>,
 }
@@ -323,7 +323,8 @@ pub fn create_window(
             ns_view,
             ns_delegate,
             vsync,
-            event_queue: std::collections::VecDeque::new(),
+            input: InputState::new(),
+            open: true,
             buffer: Vec::new(),
             width: 0,
             height: 0,
@@ -545,6 +546,8 @@ impl crate::Window for Window {
         #[cfg(debug_assertions)]
         assert_main_thread();
 
+        self.input.begin_frame();
+
         // Store the closure in thread-local storage
         let repaint_ptr = &mut render as *mut F as *mut std::ffi::c_void;
         let repaint_func = |ptr: *mut std::ffi::c_void, window: &mut Window| unsafe {
@@ -555,8 +558,6 @@ impl crate::Window for Window {
         REPAINT_CALLBACK.with(|c| c.set(Some(repaint_ptr)));
         REPAINT_FUNC.with(|f| f.set(Some(repaint_func)));
         ACTIVE_WINDOW.with(|w| w.set(self as *mut Window));
-
-        render(self);
 
         unsafe {
             let ns_app = msg_send_id(
@@ -603,9 +604,7 @@ impl crate::Window for Window {
                     break;
                 }
 
-                if let Some(ev) = translate_event(event) {
-                    self.event_queue.push_back(ev);
-                }
+                translate_event(event, &mut self.input);
 
                 let event_type_sel = sel_registerName(b"type\0".as_ptr() as *const _);
                 let event_type_func: unsafe extern "C" fn(id, SEL) -> NSEventType =
@@ -645,13 +644,75 @@ impl crate::Window for Window {
         REPAINT_CALLBACK.with(|c| c.set(None));
         REPAINT_FUNC.with(|f| f.set(None));
 
-        // Append any events captured by the delegate callbacks (like close/resize)
-        self.event_queue
-            .extend(crate::macos::event::pop_all_events());
+        render(self);
     }
 
-    fn event(&mut self) -> Option<Event> {
-        self.event_queue.pop_front()
+    fn open(&self) -> bool {
+        self.open
+    }
+
+    fn close(&mut self) {
+        if self.open {
+            self.open = false;
+            unsafe {
+                msg_send_id(
+                    self.ns_window,
+                    sel_registerName(b"close\0".as_ptr() as *const _),
+                );
+            }
+        }
+    }
+
+    fn is_down(&self, key: Key) -> bool {
+        self.input.is_down(key)
+    }
+
+    fn is_up(&self, key: Key) -> bool {
+        self.input.is_up(key)
+    }
+
+    fn pressed(&self, key: Key) -> bool {
+        self.input.pressed(key)
+    }
+
+    fn released(&self, key: Key) -> bool {
+        self.input.released(key)
+    }
+
+    fn pressed_keys(&self) -> &[Key] {
+        self.input.pressed_keys()
+    }
+
+    fn mouse_down(&self, button: MouseButton) -> bool {
+        self.input.mouse_down(button)
+    }
+
+    fn mouse_pressed(&self, button: MouseButton) -> bool {
+        self.input.mouse_pressed(button)
+    }
+
+    fn mouse_released(&self, button: MouseButton) -> bool {
+        self.input.mouse_released(button)
+    }
+
+    fn mouse_pos(&self) -> (f64, f64) {
+        self.input.mouse_pos()
+    }
+
+    fn text_input(&self) -> &[char] {
+        self.input.text_input()
+    }
+
+    fn dropped_files(&self) -> &[std::path::PathBuf] {
+        self.input.dropped_files()
+    }
+
+    fn scroll_delta(&self) -> (f64, f64) {
+        self.input.scroll_delta()
+    }
+
+    fn modifiers(&self) -> Modifiers {
+        self.input.modifiers()
     }
 }
 
@@ -703,7 +764,7 @@ fn parse_modifiers(flags: usize) -> Modifiers {
     }
 }
 
-unsafe fn translate_event(ns_event: id) -> Option<Event> {
+unsafe fn translate_event(ns_event: id, input: &mut InputState) {
     unsafe {
         let event_type_sel = sel_registerName(b"type\0".as_ptr() as *const _);
         let event_type_func: unsafe extern "C" fn(id, SEL) -> NSEventType =
@@ -715,16 +776,18 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
             std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
         let flags = modifier_flags_func(ns_event, modifier_flags_sel);
         let modifiers = parse_modifiers(flags);
+        input.set_modifiers(modifiers);
 
         match event_type {
             NSEventTypeKeyDown | NSEventTypeKeyUp => {
                 let key_code_sel = sel_registerName(b"keyCode\0".as_ptr() as *const _);
                 let key_code_func: unsafe extern "C" fn(id, SEL) -> u16 =
                     std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
-                let keycode = key_code_func(ns_event, key_code_sel);
-                let key = Key::from_macos_keycode(keycode);
+                let key = Key::from_macos_keycode(key_code_func(ns_event, key_code_sel));
 
                 if event_type == NSEventTypeKeyDown {
+                    input.set_key_down(key);
+
                     // Extract text input characters
                     let chars_ns = msg_send_id(
                         ns_event,
@@ -750,25 +813,14 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                                 let c_str = std::ffi::CStr::from_ptr(utf8_ptr);
                                 if let Ok(s) = c_str.to_str() {
                                     for c in s.chars() {
-                                        if !c.is_control() {
-                                            push_event(Event::ReceivedCharacter(c));
-                                        }
+                                        input.add_text(c);
                                     }
                                 }
                             }
                         }
                     }
-                    Some(Event::KeyDown {
-                        key,
-                        keycode,
-                        modifiers,
-                    })
                 } else {
-                    Some(Event::KeyUp {
-                        key,
-                        keycode,
-                        modifiers,
-                    })
+                    input.set_key_up(key);
                 }
             }
             NSEventTypeLeftMouseDown
@@ -801,21 +853,12 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                     _ => MouseButton::Left,
                 };
 
+                input.set_mouse_pos(x, y);
                 if event_type == NSEventTypeLeftMouseDown || event_type == NSEventTypeRightMouseDown
                 {
-                    Some(Event::MouseDown {
-                        button,
-                        x,
-                        y,
-                        modifiers,
-                    })
+                    input.set_mouse_down(button);
                 } else {
-                    Some(Event::MouseUp {
-                        button,
-                        x,
-                        y,
-                        modifiers,
-                    })
+                    input.set_mouse_up(button);
                 }
             }
             NSEventTypeMouseMoved => {
@@ -838,7 +881,7 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                     let frame = msg_send_rect(content_view, frame_sel);
                     y = frame.size.height - loc.y;
                 }
-                Some(Event::MouseMoved { x, y, modifiers })
+                input.set_mouse_pos(x, y);
             }
             NSEventTypeLeftMouseDragged | NSEventTypeRightMouseDragged => {
                 let loc_sel = sel_registerName(b"locationInWindow\0".as_ptr() as *const _);
@@ -865,12 +908,8 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                 } else {
                     MouseButton::Right
                 };
-                Some(Event::MouseDragged {
-                    button,
-                    x,
-                    y,
-                    modifiers,
-                })
+                input.set_mouse_pos(x, y);
+                input.set_mouse_down(button);
             }
             NSEventTypeScrollWheel => {
                 let dx_sel = sel_registerName(b"scrollingDeltaX\0".as_ptr() as *const _);
@@ -879,13 +918,9 @@ unsafe fn translate_event(ns_event: id) -> Option<Event> {
                     std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
                 let delta_x = double_func(ns_event, dx_sel);
                 let delta_y = double_func(ns_event, dy_sel);
-                Some(Event::Scroll {
-                    delta_x,
-                    delta_y,
-                    modifiers,
-                })
+                input.add_scroll(delta_x, delta_y);
             }
-            _ => None,
+            _ => {}
         }
     }
 }
@@ -943,7 +978,14 @@ pub fn register_delegate_class() -> Class {
 }
 
 extern "C" fn window_should_close(_this: id, _cmd: SEL, _sender: id) -> BOOL {
-    push_event(Event::CloseRequested);
+    ACTIVE_WINDOW.with(|w| {
+        let window = w.get();
+        if !window.is_null() {
+            unsafe {
+                (*window).open = false;
+            }
+        }
+    });
     YES
 }
 
@@ -1089,30 +1131,8 @@ extern "C" fn window_did_resize(_this: id, _cmd: SEL, notification: id) {
             notification,
             sel_registerName(b"object\0".as_ptr() as *const _),
         );
-        let content_view = msg_send_id(
-            window,
-            sel_registerName(b"contentView\0".as_ptr() as *const _),
-        );
-        let frame_sel = sel_registerName(b"frame\0".as_ptr() as *const _);
-        let frame = msg_send_rect(content_view, frame_sel);
-
-        let scale_sel = sel_registerName(b"backingScaleFactor\0".as_ptr() as *const _);
-        let scale_func: unsafe extern "C" fn(id, SEL) -> f64 =
-            std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
-        let scale = scale_func(window, scale_sel);
-
-        let physical_width = (frame.size.width * scale) as usize;
-        let physical_height = (frame.size.height * scale) as usize;
-
         // Repaint while AppKit is inside its live-resize tracking loop.
         repaint_window(window);
-
-        push_event(Event::Resized {
-            width: frame.size.width,
-            height: frame.size.height,
-            physical_width,
-            physical_height,
-        });
     }
 }
 
@@ -1210,12 +1230,17 @@ extern "C" fn perform_drag_operation(_this: id, _cmd: SEL, sender: id) -> BOOL {
             }
         }
 
-        if !file_paths.is_empty() {
-            push_event(Event::DroppedFiles(file_paths));
-            YES
-        } else {
-            NO
+        if file_paths.is_empty() {
+            return NO;
         }
+
+        ACTIVE_WINDOW.with(|w| {
+            let window = w.get();
+            if !window.is_null() {
+                (*window).input.add_dropped_files(file_paths);
+            }
+        });
+        YES
     }
 }
 

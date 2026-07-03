@@ -1,5 +1,4 @@
 use crate::*;
-use std::collections::VecDeque;
 pub const DEFAULT_DPI: f32 = 96.0;
 
 pub fn create_window(
@@ -105,21 +104,12 @@ pub fn create_window(
                 vec![0u32; area.width * area.height]
             },
             bitmap: BITMAPINFO::new(area.width as i32, area.height as i32),
-            quit: false,
-            mouse_position: Rect::default(),
-            left_mouse: MouseButtonState::new(),
-            right_mouse: MouseButtonState::new(),
-            middle_mouse: MouseButtonState::new(),
-            mouse_4: MouseButtonState::new(),
-            mouse_5: MouseButtonState::new(),
+            open: true,
             input: InputState::new(),
-            tray: MouseButtonState::new(),
             hglrc: null_mut(),
             focused: true,
-            needs_frame_advance: false,
             render_callback: std::ptr::null_mut(),
             render_executor: None,
-            event_queue: VecDeque::new(),
             use_gpu,
         };
 
@@ -142,81 +132,16 @@ pub struct Window {
     buffer: Vec<u32>,
     pub bitmap: BITMAPINFO,
     pub area: Rect,
-    pub quit: bool,
-    pub mouse_position: Rect,
-    pub input: InputState,
-    pub left_mouse: MouseButtonState,
-    pub right_mouse: MouseButtonState,
-    pub middle_mouse: MouseButtonState,
-    pub mouse_4: MouseButtonState,
-    pub mouse_5: MouseButtonState,
-    pub tray: MouseButtonState,
+    open: bool,
+    input: InputState,
     pub hglrc: HGLRC,
     pub focused: bool,
-    needs_frame_advance: bool,
     pub render_callback: *mut std::ffi::c_void,
     pub render_executor: Option<unsafe fn(*mut std::ffi::c_void, &mut Window)>,
-    pub event_queue: VecDeque<Event>,
     pub use_gpu: bool,
 }
 
 impl Window {
-    // pub const unsafe fn empty() -> Self {
-    //     Self {
-    //         hwnd: 0,
-    //         display_scale: 1.0,
-    //         dc: unsafe { std::mem::zeroed() },
-    //         buffer: Vec::new(),
-    //         bitmap: BITMAPINFO {
-    //             header: BITMAPINFOHEADER {
-    //                 size: 0,
-    //                 width: 0,
-    //                 height: 0,
-    //                 planes: 0,
-    //                 bit_count: 0,
-    //                 compression: 0,
-    //                 size_image: 0,
-    //                 x_pels_per_meter: 0,
-    //                 y_pels_per_meter: 0,
-    //                 clr_used: 0,
-    //                 clr_important: 0,
-    //             },
-    //             colors: [RGBQUAD {
-    //                 blue: 0,
-    //                 green: 0,
-    //                 red: 0,
-    //                 reserved: 0,
-    //             }; 1],
-    //         },
-    //         area: Rect {
-    //             x: 0,
-    //             y: 0,
-    //             width: 0,
-    //             height: 0,
-    //         },
-    //         quit: false,
-    //         mouse_position: Rect {
-    //             x: 0,
-    //             y: 0,
-    //             width: 0,
-    //             height: 0,
-    //         },
-    //         left_mouse: MouseButtonState::new(),
-    //         input: InputState::new(),
-    //         right_mouse: MouseButtonState::new(),
-    //         middle_mouse: MouseButtonState::new(),
-    //         mouse_4: MouseButtonState::new(),
-    //         mouse_5: MouseButtonState::new(),
-    //         tray: MouseButtonState::new(),
-    //         hglrc: unsafe { std::mem::zeroed() },
-    //         focused: false,
-    //         needs_frame_advance: false,
-    //         render_callback: std::ptr::null_mut(),
-    //         render_executor: None,
-    //         event_queue: VecDeque::new(),
-    //     }
-    // }
-
     /// Safety: Mutiple calls to this is unsafe.
     pub unsafe fn init_wgl_debug(&mut self) {
         pub const WGL_CONTEXT_MAJOR_VERSION_ARB: i32 = 0x2091;
@@ -438,48 +363,14 @@ impl Window {
             );
         };
     }
-
-    pub fn translate_message(&mut self, msg: MSG, message_result: i32) -> Option<Event> {
-        if message_result == 0 {
-            return None;
-        } else if message_result == -1 {
-            let last_error = unsafe { GetLastError() };
-            panic!("Error with `GetMessageA`, error code: {}", last_error);
-        }
-
-        match msg.message {
-            WM_CHAR => {
-                if let Some(c) = char::from_u32(msg.w_param as u32) {
-                    if !c.is_control() {
-                        return Some(Event::ReceivedCharacter(c));
-                    }
-                }
-            }
-            _ => {}
-        };
-
-        return None;
-    }
 }
 
 impl crate::Window for Window {
-    fn event(&mut self) -> Option<Event> {
-        if self.needs_frame_advance {
-            self.input.advance_frame();
-            self.needs_frame_advance = false;
-        }
-        if let Some(event) = self.event_queue.pop_front() {
-            return Some(event);
-        }
-        None
-    }
-
     fn draw<F>(&mut self, mut render: F)
     where
         F: FnMut(&mut Self),
     {
-        render(self);
-
+        self.input.begin_frame();
         unsafe fn execute_render<F>(closure_ptr: *mut c_void, window: &mut Window)
         where
             F: FnMut(&mut Window),
@@ -496,15 +387,76 @@ impl crate::Window for Window {
             while PeekMessageA(&mut msg, self.hwnd, 0, 0, PM_REMOVE) != 0 {
                 TranslateMessage(&msg);
                 DispatchMessageA(&msg);
-                if let Some(event) = self.translate_message(msg.clone(), 1) {
-                    self.event_queue.push_back(event);
-                }
             }
         }
 
         self.render_callback = std::ptr::null_mut();
         self.render_executor = None;
-        self.needs_frame_advance = true;
+
+        render(self);
+    }
+
+    fn open(&self) -> bool {
+        self.open
+    }
+
+    fn close(&mut self) {
+        if self.open {
+            self.open = false;
+            unsafe { DestroyWindow(self.hwnd) };
+        }
+    }
+
+    fn is_down(&self, key: Key) -> bool {
+        self.input.is_down(key)
+    }
+
+    fn is_up(&self, key: Key) -> bool {
+        self.input.is_up(key)
+    }
+
+    fn pressed(&self, key: Key) -> bool {
+        self.input.pressed(key)
+    }
+
+    fn released(&self, key: Key) -> bool {
+        self.input.released(key)
+    }
+
+    fn pressed_keys(&self) -> &[Key] {
+        self.input.pressed_keys()
+    }
+
+    fn mouse_down(&self, button: MouseButton) -> bool {
+        self.input.mouse_down(button)
+    }
+
+    fn mouse_pressed(&self, button: MouseButton) -> bool {
+        self.input.mouse_pressed(button)
+    }
+
+    fn mouse_released(&self, button: MouseButton) -> bool {
+        self.input.mouse_released(button)
+    }
+
+    fn mouse_pos(&self) -> (f64, f64) {
+        self.input.mouse_pos()
+    }
+
+    fn text_input(&self) -> &[char] {
+        self.input.text_input()
+    }
+
+    fn dropped_files(&self) -> &[std::path::PathBuf] {
+        self.input.dropped_files()
+    }
+
+    fn scroll_delta(&self) -> (f64, f64) {
+        self.input.scroll_delta()
+    }
+
+    fn modifiers(&self) -> Modifiers {
+        self.input.modifiers()
     }
 
     /// Only works for framebuffers.
@@ -719,6 +671,7 @@ pub unsafe extern "system" fn wnd_proc(
     match msg {
         //We can choose not to destroy the window, for example with a save prompt.
         WM_CLOSE => {
+            window.open = false;
             assert!(DestroyWindow(hwnd) != 0);
             return 0;
         }
@@ -737,13 +690,12 @@ pub unsafe extern "system" fn wnd_proc(
                 }
             }
             DragFinish(hdrop);
-            window.event_queue.push_back(Event::DroppedFiles(files));
+            window.input.add_dropped_files(files);
             return 0;
         }
         WM_DESTROY => {
             PostQuitMessage(0);
-            window.quit = true;
-            window.event_queue.push_back(Event::Quit);
+            window.open = false;
             return 0;
         }
         WM_SIZE => {
@@ -792,51 +744,50 @@ pub unsafe extern "system" fn wnd_proc(
             window.display_scale = scale;
             return 0;
         }
+        WM_CHAR => {
+            if let Some(c) = char::from_u32(wparam as u32) {
+                window.input.add_text(c);
+            }
+            return 0;
+        }
         WM_MOUSEMOVE => {
-            window.mouse_position = Rect::new(mx, my, 1, 1);
+            window.input.set_mouse_pos(mx as f64, my as f64);
         }
         WM_MOUSEWHEEL => {
             const WHEEL_DELTA: i16 = 120;
             let value = (wparam >> 16) as i16;
-            let delta = value as f32 / WHEEL_DELTA as f32;
-            window.input.scroll_delta = delta;
+            let delta = value as f64 / WHEEL_DELTA as f64;
+            window.input.add_scroll(0.0, delta);
             return 0;
         }
         WM_KEYDOWN | WM_SYSKEYDOWN => {
-            window.input.set_key_down(wparam);
             let keycode = wparam as u16;
-            window.event_queue.push_back(Event::KeyDown {
-                key: Key::from_windows_vk(keycode),
-                keycode,
-                modifiers: current_modifiers(),
-            });
+            window.input.set_key_down(Key::from_windows_vk(keycode));
+            window.input.set_modifiers(current_modifiers());
         }
         WM_KEYUP | WM_SYSKEYUP => {
-            window.input.set_key_up(wparam);
             let keycode = wparam as u16;
-            window.event_queue.push_back(Event::KeyUp {
-                key: Key::from_windows_vk(keycode),
-                keycode,
-                modifiers: current_modifiers(),
-            });
+            window.input.set_key_up(Key::from_windows_vk(keycode));
+            window.input.set_modifiers(current_modifiers());
         }
         WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_XBUTTONDOWN => {
             SetCapture(hwnd);
-            let rect = Rect::new(low, high, 1, 1);
+            window.input.set_mouse_pos(low as f64, high as f64);
             match msg {
-                WM_LBUTTONDOWN => window.left_mouse.pressed(rect),
-                WM_RBUTTONDOWN => window.right_mouse.pressed(rect),
-                WM_MBUTTONDOWN => window.middle_mouse.pressed(rect),
+                WM_LBUTTONDOWN => window.input.set_mouse_down(MouseButton::Left),
+                WM_RBUTTONDOWN => window.input.set_mouse_down(MouseButton::Right),
+                WM_MBUTTONDOWN => window.input.set_mouse_down(MouseButton::Middle),
                 WM_XBUTTONDOWN => {
                     let button = ((wparam >> 16) & 0xffff) as usize;
                     if button == 1 {
-                        window.mouse_4.pressed(rect);
+                        window.input.set_mouse_down(MouseButton::Other(4));
                     } else if button == 2 {
-                        window.mouse_5.pressed(rect);
+                        window.input.set_mouse_down(MouseButton::Other(5));
                     }
                 }
                 _ => {}
             }
+            window.input.set_modifiers(current_modifiers());
         }
         WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP | WM_XBUTTONUP => {
             // Only release capture if no other mouse buttons are currently being held down.
@@ -846,21 +797,22 @@ pub unsafe extern "system" fn wnd_proc(
                 ReleaseCapture();
             }
 
-            let rect = Rect::new(low, high, 1, 1);
+            window.input.set_mouse_pos(low as f64, high as f64);
             match msg {
-                WM_LBUTTONUP => window.left_mouse.released(rect),
-                WM_RBUTTONUP => window.right_mouse.released(rect),
-                WM_MBUTTONUP => window.middle_mouse.released(rect),
+                WM_LBUTTONUP => window.input.set_mouse_up(MouseButton::Left),
+                WM_RBUTTONUP => window.input.set_mouse_up(MouseButton::Right),
+                WM_MBUTTONUP => window.input.set_mouse_up(MouseButton::Middle),
                 WM_XBUTTONUP => {
                     let button = ((wparam >> 16) & 0xffff) as usize;
                     if button == 1 {
-                        window.mouse_4.released(rect);
+                        window.input.set_mouse_up(MouseButton::Other(4));
                     } else if button == 2 {
-                        window.mouse_5.released(rect);
+                        window.input.set_mouse_up(MouseButton::Other(5));
                     }
                 }
                 _ => {}
             }
+            window.input.set_modifiers(current_modifiers());
         }
         WM_KILLFOCUS => {
             window.focused = false;
@@ -871,8 +823,6 @@ pub unsafe extern "system" fn wnd_proc(
             return 0;
         }
         WM_TRAYICON if low as u32 == WM_LBUTTONDOWN => {
-            //Position doesn't really matter.
-            window.tray.pressed(Rect::default());
             return 0;
         }
         _ => {}
