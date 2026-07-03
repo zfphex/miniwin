@@ -346,7 +346,7 @@ impl Window {
     }
 }
 
-impl crate::Window for Window {
+impl PlatformWindow for Window {
     fn framebuffer(&mut self) -> &mut [u32] {
         let (w, h) = self.content_size();
         let expected_size = w * h;

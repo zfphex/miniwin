@@ -8,7 +8,7 @@ pub mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::*;
 
-pub trait Window {
+pub trait PlatformWindow {
     fn draw<F>(&mut self, render: F)
     where
         F: FnMut(&mut Self);

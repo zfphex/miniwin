@@ -365,7 +365,7 @@ impl Window {
     }
 }
 
-impl crate::Window for Window {
+impl PlatformWindow for Window {
     fn draw<F>(&mut self, mut render: F)
     where
         F: FnMut(&mut Self),
