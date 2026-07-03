@@ -303,10 +303,6 @@ impl Window {
         unsafe { func(interval) };
     }
 
-    pub fn swap_buffers(&self) {
-        unsafe { SwapBuffers(self.dc) };
-    }
-
     ///Updates the width and height based on the display scale.
     pub fn rescale_window(&self) {
         let area = self.client_area();
@@ -504,6 +500,9 @@ impl crate::Window for Window {
         self.needs_frame_advance = true;
     }
 
+    /// Only works for framebuffers.
+    /// For OpenGL use `window.set_swap_interval(1)`
+    /// Then at the end of the frame call window
     fn wait_for_vsync(&self) {
         unsafe { DwmFlush() };
     }
@@ -628,6 +627,10 @@ impl crate::Window for Window {
 
     fn set_clipboard_text(&self, text: &str) {
         copy_to_clipboard(text);
+    }
+
+    fn present_gpu(&self) {
+        unsafe { SwapBuffers(self.dc) };
     }
 }
 

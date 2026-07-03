@@ -15,6 +15,7 @@ pub trait Window {
     fn event(&mut self) -> Option<Event>;
     fn framebuffer(&mut self) -> &mut [u32];
     fn present_framebuffer(&self);
+    fn present_gpu(&self);
     fn scale_factor(&self) -> f64;
     fn content_size(&self) -> (usize, usize);
     fn wait_for_vsync(&self);

@@ -427,6 +427,11 @@ impl crate::Window for Window {
         }
     }
 
+    fn present_gpu(&self) {
+        // Metal handles this itself.
+        // VSync at the end of the frame instead.
+    }
+
     fn scale_factor(&self) -> f64 {
         unsafe {
             let sel = sel_registerName(b"backingScaleFactor\0".as_ptr() as *const _);
