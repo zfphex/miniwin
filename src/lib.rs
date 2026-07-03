@@ -19,9 +19,10 @@ pub trait Window {
     fn pressed(&self, key: Key) -> bool;
     fn released(&self, key: Key) -> bool;
     fn pressed_keys(&self) -> &[Key];
-    fn mouse_down(&self, button: MouseButton) -> bool;
-    fn mouse_pressed(&self, button: MouseButton) -> bool;
-    fn mouse_released(&self, button: MouseButton) -> bool;
+    fn mouse_down(&self, button: Mouse) -> bool;
+    fn mouse_pressed(&self, button: Mouse) -> bool;
+    fn mouse_released(&self, button: Mouse) -> bool;
+    fn mouse_clicked(&self, button: Mouse, area: Rect) -> bool;
     fn mouse_pos(&self) -> (f64, f64);
     fn text_input(&self) -> &[char];
     fn dropped_files(&self) -> &[std::path::PathBuf];
@@ -66,12 +67,15 @@ pub enum CursorIcon {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MouseButton {
+pub enum Mouse {
     Left,
     Right,
     Middle,
-    Other(u16),
+    Back,
+    Forward,
 }
+
+const MOUSE_BUTTON_COUNT: usize = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
@@ -282,8 +286,10 @@ pub struct Modifiers {
 pub(crate) struct InputState {
     current_keys: [bool; 256],
     previous_keys: [bool; 256],
-    current_mouse: Vec<MouseButton>,
-    previous_mouse: Vec<MouseButton>,
+    current_mouse: [bool; MOUSE_BUTTON_COUNT],
+    previous_mouse: [bool; MOUSE_BUTTON_COUNT],
+    mouse_press_positions: [Option<(f64, f64)>; MOUSE_BUTTON_COUNT],
+    mouse_release_positions: [Option<(f64, f64)>; MOUSE_BUTTON_COUNT],
     pressed_keys: Vec<Key>,
     mouse_x: f64,
     mouse_y: f64,
@@ -298,8 +304,10 @@ impl InputState {
         Self {
             current_keys: [false; 256],
             previous_keys: [false; 256],
-            current_mouse: Vec::new(),
-            previous_mouse: Vec::new(),
+            current_mouse: [false; MOUSE_BUTTON_COUNT],
+            previous_mouse: [false; MOUSE_BUTTON_COUNT],
+            mouse_press_positions: [None; MOUSE_BUTTON_COUNT],
+            mouse_release_positions: [None; MOUSE_BUTTON_COUNT],
             pressed_keys: Vec::new(),
             mouse_x: 0.0,
             mouse_y: 0.0,
@@ -312,7 +320,8 @@ impl InputState {
 
     pub(crate) fn begin_frame(&mut self) {
         self.previous_keys.copy_from_slice(&self.current_keys);
-        self.previous_mouse.clone_from(&self.current_mouse);
+        self.previous_mouse.copy_from_slice(&self.current_mouse);
+        self.mouse_release_positions = [None; MOUSE_BUTTON_COUNT];
         self.pressed_keys.clear();
         self.text_input.clear();
         self.dropped_files.clear();
@@ -345,16 +354,35 @@ impl InputState {
         &self.pressed_keys
     }
 
-    pub fn mouse_down(&self, button: MouseButton) -> bool {
-        self.current_mouse.contains(&button)
+    pub fn mouse_down(&self, button: Mouse) -> bool {
+        self.mouse_index(button)
+            .map(|index| self.current_mouse[index])
+            .unwrap_or(false)
     }
 
-    pub fn mouse_pressed(&self, button: MouseButton) -> bool {
-        self.current_mouse.contains(&button) && !self.previous_mouse.contains(&button)
+    pub fn mouse_pressed(&self, button: Mouse) -> bool {
+        self.mouse_index(button)
+            .map(|index| self.current_mouse[index] && !self.previous_mouse[index])
+            .unwrap_or(false)
     }
 
-    pub fn mouse_released(&self, button: MouseButton) -> bool {
-        !self.current_mouse.contains(&button) && self.previous_mouse.contains(&button)
+    pub fn mouse_released(&self, button: Mouse) -> bool {
+        self.mouse_release_position(button).is_some()
+            || self
+                .mouse_index(button)
+                .map(|index| !self.current_mouse[index] && self.previous_mouse[index])
+                .unwrap_or(false)
+    }
+
+    pub fn mouse_clicked(&self, button: Mouse, area: Rect) -> bool {
+        let Some(press_pos) = self.mouse_press_position(button) else {
+            return false;
+        };
+        let Some(release_pos) = self.mouse_release_position(button) else {
+            return false;
+        };
+
+        point_in_rect(press_pos, area) && point_in_rect(release_pos, area)
     }
 
     pub fn mouse_pos(&self) -> (f64, f64) {
@@ -394,14 +422,24 @@ impl InputState {
         }
     }
 
-    pub(crate) fn set_mouse_down(&mut self, button: MouseButton) {
-        if !self.current_mouse.contains(&button) {
-            self.current_mouse.push(button);
+    pub(crate) fn set_mouse_down(&mut self, button: Mouse) {
+        let Some(index) = self.mouse_index(button) else {
+            return;
+        };
+
+        if !self.current_mouse[index] {
+            self.mouse_press_positions[index] = Some((self.mouse_x, self.mouse_y));
         }
+        self.current_mouse[index] = true;
     }
 
-    pub(crate) fn set_mouse_up(&mut self, button: MouseButton) {
-        self.current_mouse.retain(|&current| current != button);
+    pub(crate) fn set_mouse_up(&mut self, button: Mouse) {
+        let Some(index) = self.mouse_index(button) else {
+            return;
+        };
+
+        self.current_mouse[index] = false;
+        self.mouse_release_positions[index] = Some((self.mouse_x, self.mouse_y));
     }
 
     pub(crate) fn set_mouse_pos(&mut self, x: f64, y: f64) {
@@ -435,6 +473,30 @@ impl InputState {
         let index = key.vk_code();
         (index < self.current_keys.len()).then_some(index)
     }
+
+    fn mouse_index(&self, button: Mouse) -> Option<usize> {
+        Some(match button {
+            Mouse::Left => 0,
+            Mouse::Right => 1,
+            Mouse::Middle => 2,
+            Mouse::Back => 3,
+            Mouse::Forward => 4,
+        })
+    }
+
+    fn mouse_press_position(&self, button: Mouse) -> Option<(f64, f64)> {
+        self.mouse_index(button)
+            .and_then(|index| self.mouse_press_positions[index])
+    }
+
+    fn mouse_release_position(&self, button: Mouse) -> Option<(f64, f64)> {
+        self.mouse_index(button)
+            .and_then(|index| self.mouse_release_positions[index])
+    }
+}
+
+fn point_in_rect((x, y): (f64, f64), area: Rect) -> bool {
+    x >= area.x as f64 && x < area.right() as f64 && y >= area.y as f64 && y < area.bottom() as f64
 }
 
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]

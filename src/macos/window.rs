@@ -683,16 +683,20 @@ impl crate::Window for Window {
         self.input.pressed_keys()
     }
 
-    fn mouse_down(&self, button: MouseButton) -> bool {
+    fn mouse_down(&self, button: Mouse) -> bool {
         self.input.mouse_down(button)
     }
 
-    fn mouse_pressed(&self, button: MouseButton) -> bool {
+    fn mouse_pressed(&self, button: Mouse) -> bool {
         self.input.mouse_pressed(button)
     }
 
-    fn mouse_released(&self, button: MouseButton) -> bool {
+    fn mouse_released(&self, button: Mouse) -> bool {
         self.input.mouse_released(button)
+    }
+
+    fn mouse_clicked(&self, button: Mouse, area: Rect) -> bool {
+        self.input.mouse_clicked(button, area)
     }
 
     fn mouse_pos(&self) -> (f64, f64) {
@@ -764,6 +768,32 @@ fn parse_modifiers(flags: usize) -> Modifiers {
     }
 }
 
+unsafe fn mouse_from_macos_event(ns_event: id, event_type: NSEventType) -> Option<Mouse> {
+    unsafe {
+        match event_type {
+            NSEventTypeLeftMouseDown | NSEventTypeLeftMouseUp | NSEventTypeLeftMouseDragged => {
+                Some(Mouse::Left)
+            }
+            NSEventTypeRightMouseDown | NSEventTypeRightMouseUp | NSEventTypeRightMouseDragged => {
+                Some(Mouse::Right)
+            }
+            NSEventTypeOtherMouseDown | NSEventTypeOtherMouseUp | NSEventTypeOtherMouseDragged => {
+                let button_number_sel = sel_registerName(b"buttonNumber\0".as_ptr() as *const _);
+                let button_number_func: unsafe extern "C" fn(id, SEL) -> isize =
+                    std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+
+                match button_number_func(ns_event, button_number_sel) {
+                    2 => Some(Mouse::Middle),
+                    3 => Some(Mouse::Back),
+                    4 => Some(Mouse::Forward),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
 unsafe fn translate_event(ns_event: id, input: &mut InputState) {
     unsafe {
         let event_type_sel = sel_registerName(b"type\0".as_ptr() as *const _);
@@ -826,7 +856,9 @@ unsafe fn translate_event(ns_event: id, input: &mut InputState) {
             NSEventTypeLeftMouseDown
             | NSEventTypeLeftMouseUp
             | NSEventTypeRightMouseDown
-            | NSEventTypeRightMouseUp => {
+            | NSEventTypeRightMouseUp
+            | NSEventTypeOtherMouseDown
+            | NSEventTypeOtherMouseUp => {
                 let loc_sel = sel_registerName(b"locationInWindow\0".as_ptr() as *const _);
                 let loc_func: unsafe extern "C" fn(id, SEL) -> NSPoint =
                     std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
@@ -847,18 +879,16 @@ unsafe fn translate_event(ns_event: id, input: &mut InputState) {
                     y = frame.size.height - loc.y;
                 }
 
-                let button = match event_type {
-                    NSEventTypeLeftMouseDown | NSEventTypeLeftMouseUp => MouseButton::Left,
-                    NSEventTypeRightMouseDown | NSEventTypeRightMouseUp => MouseButton::Right,
-                    _ => MouseButton::Left,
-                };
-
                 input.set_mouse_pos(x, y);
-                if event_type == NSEventTypeLeftMouseDown || event_type == NSEventTypeRightMouseDown
-                {
-                    input.set_mouse_down(button);
-                } else {
-                    input.set_mouse_up(button);
+                if let Some(button) = mouse_from_macos_event(ns_event, event_type) {
+                    if event_type == NSEventTypeLeftMouseDown
+                        || event_type == NSEventTypeRightMouseDown
+                        || event_type == NSEventTypeOtherMouseDown
+                    {
+                        input.set_mouse_down(button);
+                    } else {
+                        input.set_mouse_up(button);
+                    }
                 }
             }
             NSEventTypeMouseMoved => {
@@ -883,7 +913,9 @@ unsafe fn translate_event(ns_event: id, input: &mut InputState) {
                 }
                 input.set_mouse_pos(x, y);
             }
-            NSEventTypeLeftMouseDragged | NSEventTypeRightMouseDragged => {
+            NSEventTypeLeftMouseDragged
+            | NSEventTypeRightMouseDragged
+            | NSEventTypeOtherMouseDragged => {
                 let loc_sel = sel_registerName(b"locationInWindow\0".as_ptr() as *const _);
                 let loc_func: unsafe extern "C" fn(id, SEL) -> NSPoint =
                     std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
@@ -903,13 +935,10 @@ unsafe fn translate_event(ns_event: id, input: &mut InputState) {
                     let frame = msg_send_rect(content_view, frame_sel);
                     y = frame.size.height - loc.y;
                 }
-                let button = if event_type == NSEventTypeLeftMouseDragged {
-                    MouseButton::Left
-                } else {
-                    MouseButton::Right
-                };
                 input.set_mouse_pos(x, y);
-                input.set_mouse_down(button);
+                if let Some(button) = mouse_from_macos_event(ns_event, event_type) {
+                    input.set_mouse_down(button);
+                }
             }
             NSEventTypeScrollWheel => {
                 let dx_sel = sel_registerName(b"scrollingDeltaX\0".as_ptr() as *const _);

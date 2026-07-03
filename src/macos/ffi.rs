@@ -70,6 +70,9 @@ pub const NSEventTypeRightMouseDragged: NSEventType = 7;
 pub const NSEventTypeKeyDown: NSEventType = 10;
 pub const NSEventTypeKeyUp: NSEventType = 11;
 pub const NSEventTypeScrollWheel: NSEventType = 22;
+pub const NSEventTypeOtherMouseDown: NSEventType = 25;
+pub const NSEventTypeOtherMouseUp: NSEventType = 26;
+pub const NSEventTypeOtherMouseDragged: NSEventType = 27;
 
 pub const NSEventMaskAny: u64 = std::u64::MAX;
 

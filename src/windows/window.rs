@@ -427,16 +427,20 @@ impl crate::Window for Window {
         self.input.pressed_keys()
     }
 
-    fn mouse_down(&self, button: MouseButton) -> bool {
+    fn mouse_down(&self, button: Mouse) -> bool {
         self.input.mouse_down(button)
     }
 
-    fn mouse_pressed(&self, button: MouseButton) -> bool {
+    fn mouse_pressed(&self, button: Mouse) -> bool {
         self.input.mouse_pressed(button)
     }
 
-    fn mouse_released(&self, button: MouseButton) -> bool {
+    fn mouse_released(&self, button: Mouse) -> bool {
         self.input.mouse_released(button)
+    }
+
+    fn mouse_clicked(&self, button: Mouse, area: Rect) -> bool {
+        self.input.mouse_clicked(button, area)
     }
 
     fn mouse_pos(&self) -> (f64, f64) {
@@ -774,15 +778,15 @@ pub unsafe extern "system" fn wnd_proc(
             SetCapture(hwnd);
             window.input.set_mouse_pos(low as f64, high as f64);
             match msg {
-                WM_LBUTTONDOWN => window.input.set_mouse_down(MouseButton::Left),
-                WM_RBUTTONDOWN => window.input.set_mouse_down(MouseButton::Right),
-                WM_MBUTTONDOWN => window.input.set_mouse_down(MouseButton::Middle),
+                WM_LBUTTONDOWN => window.input.set_mouse_down(Mouse::Left),
+                WM_RBUTTONDOWN => window.input.set_mouse_down(Mouse::Right),
+                WM_MBUTTONDOWN => window.input.set_mouse_down(Mouse::Middle),
                 WM_XBUTTONDOWN => {
                     let button = ((wparam >> 16) & 0xffff) as usize;
                     if button == 1 {
-                        window.input.set_mouse_down(MouseButton::Other(4));
+                        window.input.set_mouse_down(Mouse::Back);
                     } else if button == 2 {
-                        window.input.set_mouse_down(MouseButton::Other(5));
+                        window.input.set_mouse_down(Mouse::Forward);
                     }
                 }
                 _ => {}
@@ -799,15 +803,15 @@ pub unsafe extern "system" fn wnd_proc(
 
             window.input.set_mouse_pos(low as f64, high as f64);
             match msg {
-                WM_LBUTTONUP => window.input.set_mouse_up(MouseButton::Left),
-                WM_RBUTTONUP => window.input.set_mouse_up(MouseButton::Right),
-                WM_MBUTTONUP => window.input.set_mouse_up(MouseButton::Middle),
+                WM_LBUTTONUP => window.input.set_mouse_up(Mouse::Left),
+                WM_RBUTTONUP => window.input.set_mouse_up(Mouse::Right),
+                WM_MBUTTONUP => window.input.set_mouse_up(Mouse::Middle),
                 WM_XBUTTONUP => {
                     let button = ((wparam >> 16) & 0xffff) as usize;
                     if button == 1 {
-                        window.input.set_mouse_up(MouseButton::Other(4));
+                        window.input.set_mouse_up(Mouse::Back);
                     } else if button == 2 {
-                        window.input.set_mouse_up(MouseButton::Other(5));
+                        window.input.set_mouse_up(Mouse::Forward);
                     }
                 }
                 _ => {}
