@@ -348,7 +348,10 @@ impl Window {
 
 impl PlatformWindow for Window {
     fn framebuffer(&mut self) -> &mut [u32] {
-        let (w, h) = self.content_size();
+        let (content_width, content_height) = self.content_size();
+        let scale = self.scale_factor() as f32;
+        let w = (content_width as f32 * scale).round() as usize;
+        let h = (content_height as f32 * scale).round() as usize;
         let expected_size = w * h;
 
         // Dynamically resize the internal buffer if the window size changes
@@ -401,6 +404,12 @@ impl PlatformWindow for Window {
             let layer_sel = sel_registerName(b"layer\0".as_ptr() as *const _);
             let layer = msg_send_id(self.ns_view, layer_sel);
 
+            let set_contents_scale_sel =
+                sel_registerName(b"setContentsScale:\0".as_ptr() as *const _);
+            let set_contents_scale: unsafe extern "C" fn(id, SEL, f64) =
+                std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+            set_contents_scale(layer, set_contents_scale_sel, self.scale_factor());
+
             let set_contents_sel = sel_registerName(b"setContents:\0".as_ptr() as *const _);
 
             // CoreAnimation will read the pointer contents and synchronously upload it
@@ -426,10 +435,9 @@ impl PlatformWindow for Window {
         unsafe {
             let frame_sel = sel_registerName(b"frame\0".as_ptr() as *const _);
             let frame = msg_send_rect(self.ns_view, frame_sel);
-            let scale = self.scale_factor();
             (
-                (frame.size.width * scale) as usize,
-                (frame.size.height * scale) as usize,
+                frame.size.width.round().max(0.0) as usize,
+                frame.size.height.round().max(0.0) as usize,
             )
         }
     }

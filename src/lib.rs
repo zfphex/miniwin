@@ -547,6 +547,14 @@ impl Rect {
     pub const fn bottom(&self) -> usize {
         self.y + self.height
     }
+    pub fn scale(self, scale: f32) -> Rect {
+        let x = (self.x as f32 * scale).round() as usize;
+        let y = (self.y as f32 * scale).round() as usize;
+        let right = (self.right() as f32 * scale).round() as usize;
+        let bottom = (self.bottom() as f32 * scale).round() as usize;
+
+        Rect::new(x, y, right.saturating_sub(x), bottom.saturating_sub(y))
+    }
     pub const fn intersects(&self, other: Rect) -> bool {
         self.x < other.x + other.width
             && self.x + self.width > other.x
