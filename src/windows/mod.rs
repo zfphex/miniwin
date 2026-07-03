@@ -42,27 +42,27 @@ pub type LPCWSTR = *const u16;
 pub type LPWSTR = *mut u16;
 
 #[link(name = "dwmapi")]
-extern "system" {
+unsafe extern "system" {
     pub fn DwmFlush() -> i32;
     pub fn DwmGetColorizationColor(pcrColorization: *mut u32, pfOpaqueBlend: *mut i32) -> i32;
 }
 
 #[link(name = "Opengl32")]
-extern "system" {
+unsafe extern "system" {
     pub fn wglCreateContext(hdc: *mut std::ffi::c_void) -> HGLRC;
     pub fn wglMakeCurrent(hdc: *mut std::ffi::c_void, hglrc: HGLRC) -> i32;
     pub fn wglGetProcAddress(name: *const i8) -> *const c_void;
 }
 
 #[link(name = "shell32")]
-extern "system" {
+unsafe extern "system" {
     pub fn DragAcceptFiles(hWnd: HWND, fAccept: BOOL);
     pub fn DragQueryFileW(hDrop: HANDLE, iFile: UINT, lpszFile: LPWSTR, cch: UINT) -> UINT;
     pub fn DragFinish(hDrop: HANDLE);
 }
 
 #[link(name = "user32")]
-extern "system" {
+unsafe extern "system" {
     pub fn CreateWindowExA(
         dwexstyle: u32,
         lpclassname: *const u8,
@@ -85,7 +85,7 @@ extern "system" {
         remove_msg: u32,
     ) -> i32;
     pub fn GetMessageA(msg: *mut MSG, hwnd: isize, msg_filter_min: u32, msg_filter_max: u32)
-        -> i32;
+    -> i32;
     pub fn PostQuitMessage(nExitCode: i32);
     pub fn RegisterClassA(lpwndclass: *const WNDCLASSA) -> u16;
     pub fn DispatchMessageA(lpMsg: *const MSG) -> isize;

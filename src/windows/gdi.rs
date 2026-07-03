@@ -1,10 +1,10 @@
 use crate::*;
 
 #[link(name = "Gdi32")]
-extern "system" {
+unsafe extern "system" {
     pub fn ChoosePixelFormat(hdc: *mut c_void, ppfd: *const PIXELFORMATDESCRIPTOR) -> i32;
     pub fn SetPixelFormat(hdc: *mut c_void, format: i32, ppfd: *const PIXELFORMATDESCRIPTOR)
-        -> i32;
+    -> i32;
     pub fn SwapBuffers(hdc: *mut c_void) -> i32;
     pub fn StretchDIBits(
         hdc: *mut c_void,

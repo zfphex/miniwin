@@ -1,6 +1,6 @@
 [package]
 name = "miniwin"
 version = "0.1.0"
-edition = "2021" # 😮😮😮😮😮 CLANKER DETECTED !!!! Please go touch grass.
+edition = "2024"
 
 [dependencies]

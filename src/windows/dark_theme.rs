@@ -23,7 +23,7 @@ pub unsafe fn set_dark_theme(hwnd: isize) {
     }
 
     #[link(name = "ntdll")]
-    extern "system" {
+    unsafe extern "system" {
         fn RtlGetVersion(version: *mut OSVERSIONINFOW) -> i32;
     }
 

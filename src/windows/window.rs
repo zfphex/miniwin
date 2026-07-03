@@ -375,8 +375,10 @@ impl crate::Window for Window {
         where
             F: FnMut(&mut Window),
         {
-            let closure = &mut *(closure_ptr as *mut F);
-            closure(window);
+            unsafe {
+                let closure = &mut *(closure_ptr as *mut F);
+                closure(window);
+            }
         }
 
         self.render_callback = &mut render as *mut F as *mut c_void;
@@ -650,187 +652,190 @@ pub unsafe extern "system" fn wnd_proc(
     wparam: usize,
     lparam: isize,
 ) -> isize {
-    if msg == WM_CREATE {
-        set_dark_theme(hwnd);
-        return 0;
-    }
-
-    let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut Window;
-    if ptr.is_null() {
-        return DefWindowProcA(hwnd, msg, wparam, lparam);
-    }
-
-    //I'm not convinced this is the right way to do this.
-    let window: &mut Window = &mut *ptr;
-
-    //Clamp negative numbers to 0
-    let mx = (lparam as i16).max(0) as usize;
-    let my = ((lparam >> 16) as i16).max(0) as usize;
-
-    let low = (lparam & 0xffff) as usize;
-    let high = ((lparam >> 16) & 0xffff) as usize;
-
-    // println!("{}", wm_code_name(msg));
-
-    match msg {
-        //We can choose not to destroy the window, for example with a save prompt.
-        WM_CLOSE => {
-            window.open = false;
-            assert!(DestroyWindow(hwnd) != 0);
+    unsafe {
+        if msg == WM_CREATE {
+            set_dark_theme(hwnd);
             return 0;
         }
-        WM_DROPFILES => {
-            let hdrop = wparam as HANDLE;
-            let count = DragQueryFileW(hdrop, 0xFFFFFFFF, null_mut(), 0);
-            let mut files = Vec::new();
-            for i in 0..count {
-                let len = DragQueryFileW(hdrop, i, null_mut(), 0);
-                if len > 0 {
-                    let mut buf = vec![0u16; (len + 1) as usize];
-                    DragQueryFileW(hdrop, i, buf.as_mut_ptr(), len + 1);
-                    if let Ok(s) = String::from_utf16(&buf[..len as usize]) {
-                        files.push(std::path::PathBuf::from(s));
+
+        let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut Window;
+        if ptr.is_null() {
+            return DefWindowProcA(hwnd, msg, wparam, lparam);
+        }
+
+        //I'm not convinced this is the right way to do this.
+        let window: &mut Window = &mut *ptr;
+
+        //Clamp negative numbers to 0
+        let mx = (lparam as i16).max(0) as usize;
+        let my = ((lparam >> 16) as i16).max(0) as usize;
+
+        let low = (lparam & 0xffff) as usize;
+        let high = ((lparam >> 16) & 0xffff) as usize;
+
+        // println!("{}", wm_code_name(msg));
+
+        match msg {
+            //We can choose not to destroy the window, for example with a save prompt.
+            WM_CLOSE => {
+                window.open = false;
+                assert!(DestroyWindow(hwnd) != 0);
+                return 0;
+            }
+            WM_DROPFILES => {
+                let hdrop = wparam as HANDLE;
+                let count = DragQueryFileW(hdrop, 0xFFFFFFFF, null_mut(), 0);
+                let mut files = Vec::new();
+                for i in 0..count {
+                    let len = DragQueryFileW(hdrop, i, null_mut(), 0);
+                    if len > 0 {
+                        let mut buf = vec![0u16; (len + 1) as usize];
+                        DragQueryFileW(hdrop, i, buf.as_mut_ptr(), len + 1);
+                        if let Ok(s) = String::from_utf16(&buf[..len as usize]) {
+                            files.push(std::path::PathBuf::from(s));
+                        }
                     }
                 }
+                DragFinish(hdrop);
+                window.input.add_dropped_files(files);
+                return 0;
             }
-            DragFinish(hdrop);
-            window.input.add_dropped_files(files);
-            return 0;
-        }
-        WM_DESTROY => {
-            PostQuitMessage(0);
-            window.open = false;
-            return 0;
-        }
-        WM_SIZE => {
-            let (width, height) = (low, high);
-            invoke_render_callback(window);
-            return 0;
-        }
-        WM_SIZING | WM_PAINT => {
-            invoke_render_callback(window);
-            ValidateRect(hwnd, null());
-            return 0;
-        }
-        //https://learn.microsoft.com/en-us/windows/win32/hidpi/wm-dpichanged
-        WM_DPICHANGED => {
-            //The new display scale and DPI.
-            let dpi = (wparam >> 16) & 0xffff;
-            let scale = dpi as f32 / DEFAULT_DPI;
-
-            //This is the recommended x, y, width and height.
-            //The width and height is wrong so we ignore it.
-            //X and Y seems right.
-            let ptr = lparam as *mut RECT;
-            assert!(!ptr.is_null());
-            let rect = &(*ptr);
-
-            let old = window.client_area();
-            let original_width = old.width as f32 / window.display_scale;
-            let original_height = old.height as f32 / window.display_scale;
-
-            let (width, height) = if scale == 1.0 {
-                (original_width, original_height)
-            } else {
-                (original_width * scale, original_height * scale)
-            };
-
-            SetWindowPos(
-                hwnd,
-                0,
-                rect.left,
-                rect.top,
-                width.round() as i32,
-                height.round() as i32,
-                SWP_NOZORDER | SWP_NOACTIVATE,
-            );
-
-            window.display_scale = scale;
-            return 0;
-        }
-        WM_CHAR => {
-            if let Some(c) = char::from_u32(wparam as u32) {
-                window.input.add_text(c);
+            WM_DESTROY => {
+                PostQuitMessage(0);
+                window.open = false;
+                return 0;
             }
-            return 0;
-        }
-        WM_MOUSEMOVE => {
-            window.input.set_mouse_pos(mx as f64, my as f64);
-        }
-        WM_MOUSEWHEEL => {
-            const WHEEL_DELTA: i16 = 120;
-            let value = (wparam >> 16) as i16;
-            let delta = value as f64 / WHEEL_DELTA as f64;
-            window.input.add_scroll(0.0, delta);
-            return 0;
-        }
-        WM_KEYDOWN | WM_SYSKEYDOWN => {
-            let keycode = wparam as u16;
-            window.input.set_key_down(Key::from_windows_vk(keycode));
-            window.input.set_modifiers(current_modifiers());
-        }
-        WM_KEYUP | WM_SYSKEYUP => {
-            let keycode = wparam as u16;
-            window.input.set_key_up(Key::from_windows_vk(keycode));
-            window.input.set_modifiers(current_modifiers());
-        }
-        WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_XBUTTONDOWN => {
-            SetCapture(hwnd);
-            window.input.set_mouse_pos(low as f64, high as f64);
-            match msg {
-                WM_LBUTTONDOWN => window.input.set_mouse_down(Mouse::Left),
-                WM_RBUTTONDOWN => window.input.set_mouse_down(Mouse::Right),
-                WM_MBUTTONDOWN => window.input.set_mouse_down(Mouse::Middle),
-                WM_XBUTTONDOWN => {
-                    let button = ((wparam >> 16) & 0xffff) as usize;
-                    if button == 1 {
-                        window.input.set_mouse_down(Mouse::Back);
-                    } else if button == 2 {
-                        window.input.set_mouse_down(Mouse::Forward);
-                    }
+            WM_SIZE => {
+                let (width, height) = (low, high);
+                invoke_render_callback(window);
+                return 0;
+            }
+            WM_SIZING | WM_PAINT => {
+                invoke_render_callback(window);
+                ValidateRect(hwnd, null());
+                return 0;
+            }
+            //https://learn.microsoft.com/en-us/windows/win32/hidpi/wm-dpichanged
+            WM_DPICHANGED => {
+                //The new display scale and DPI.
+                let dpi = (wparam >> 16) & 0xffff;
+                let scale = dpi as f32 / DEFAULT_DPI;
+
+                //This is the recommended x, y, width and height.
+                //The width and height is wrong so we ignore it.
+                //X and Y seems right.
+                let ptr = lparam as *mut RECT;
+                assert!(!ptr.is_null());
+                let rect = &(*ptr);
+
+                let old = window.client_area();
+                let original_width = old.width as f32 / window.display_scale;
+                let original_height = old.height as f32 / window.display_scale;
+
+                let (width, height) = if scale == 1.0 {
+                    (original_width, original_height)
+                } else {
+                    (original_width * scale, original_height * scale)
+                };
+
+                SetWindowPos(
+                    hwnd,
+                    0,
+                    rect.left,
+                    rect.top,
+                    width.round() as i32,
+                    height.round() as i32,
+                    SWP_NOZORDER | SWP_NOACTIVATE,
+                );
+
+                window.display_scale = scale;
+                return 0;
+            }
+            WM_CHAR => {
+                if let Some(c) = char::from_u32(wparam as u32) {
+                    window.input.add_text(c);
                 }
-                _ => {}
+                return 0;
             }
-            window.input.set_modifiers(current_modifiers());
-        }
-        WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP | WM_XBUTTONUP => {
-            // Only release capture if no other mouse buttons are currently being held down.
-            if wparam as u32 & (MK_LBUTTON | MK_RBUTTON | MK_MBUTTON | MK_XBUTTON1 | MK_XBUTTON2)
-                == 0
-            {
-                ReleaseCapture();
+            WM_MOUSEMOVE => {
+                window.input.set_mouse_pos(mx as f64, my as f64);
             }
-
-            window.input.set_mouse_pos(low as f64, high as f64);
-            match msg {
-                WM_LBUTTONUP => window.input.set_mouse_up(Mouse::Left),
-                WM_RBUTTONUP => window.input.set_mouse_up(Mouse::Right),
-                WM_MBUTTONUP => window.input.set_mouse_up(Mouse::Middle),
-                WM_XBUTTONUP => {
-                    let button = ((wparam >> 16) & 0xffff) as usize;
-                    if button == 1 {
-                        window.input.set_mouse_up(Mouse::Back);
-                    } else if button == 2 {
-                        window.input.set_mouse_up(Mouse::Forward);
+            WM_MOUSEWHEEL => {
+                const WHEEL_DELTA: i16 = 120;
+                let value = (wparam >> 16) as i16;
+                let delta = value as f64 / WHEEL_DELTA as f64;
+                window.input.add_scroll(0.0, delta);
+                return 0;
+            }
+            WM_KEYDOWN | WM_SYSKEYDOWN => {
+                let keycode = wparam as u16;
+                window.input.set_key_down(Key::from_windows_vk(keycode));
+                window.input.set_modifiers(current_modifiers());
+            }
+            WM_KEYUP | WM_SYSKEYUP => {
+                let keycode = wparam as u16;
+                window.input.set_key_up(Key::from_windows_vk(keycode));
+                window.input.set_modifiers(current_modifiers());
+            }
+            WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_XBUTTONDOWN => {
+                SetCapture(hwnd);
+                window.input.set_mouse_pos(low as f64, high as f64);
+                match msg {
+                    WM_LBUTTONDOWN => window.input.set_mouse_down(Mouse::Left),
+                    WM_RBUTTONDOWN => window.input.set_mouse_down(Mouse::Right),
+                    WM_MBUTTONDOWN => window.input.set_mouse_down(Mouse::Middle),
+                    WM_XBUTTONDOWN => {
+                        let button = ((wparam >> 16) & 0xffff) as usize;
+                        if button == 1 {
+                            window.input.set_mouse_down(Mouse::Back);
+                        } else if button == 2 {
+                            window.input.set_mouse_down(Mouse::Forward);
+                        }
                     }
+                    _ => {}
                 }
-                _ => {}
+                window.input.set_modifiers(current_modifiers());
             }
-            window.input.set_modifiers(current_modifiers());
+            WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP | WM_XBUTTONUP => {
+                // Only release capture if no other mouse buttons are currently being held down.
+                if wparam as u32
+                    & (MK_LBUTTON | MK_RBUTTON | MK_MBUTTON | MK_XBUTTON1 | MK_XBUTTON2)
+                    == 0
+                {
+                    ReleaseCapture();
+                }
+
+                window.input.set_mouse_pos(low as f64, high as f64);
+                match msg {
+                    WM_LBUTTONUP => window.input.set_mouse_up(Mouse::Left),
+                    WM_RBUTTONUP => window.input.set_mouse_up(Mouse::Right),
+                    WM_MBUTTONUP => window.input.set_mouse_up(Mouse::Middle),
+                    WM_XBUTTONUP => {
+                        let button = ((wparam >> 16) & 0xffff) as usize;
+                        if button == 1 {
+                            window.input.set_mouse_up(Mouse::Back);
+                        } else if button == 2 {
+                            window.input.set_mouse_up(Mouse::Forward);
+                        }
+                    }
+                    _ => {}
+                }
+                window.input.set_modifiers(current_modifiers());
+            }
+            WM_KILLFOCUS => {
+                window.focused = false;
+                return 0;
+            }
+            WM_SETFOCUS => {
+                window.focused = true;
+                return 0;
+            }
+            WM_TRAYICON if low as u32 == WM_LBUTTONDOWN => {
+                return 0;
+            }
+            _ => {}
         }
-        WM_KILLFOCUS => {
-            window.focused = false;
-            return 0;
-        }
-        WM_SETFOCUS => {
-            window.focused = true;
-            return 0;
-        }
-        WM_TRAYICON if low as u32 == WM_LBUTTONDOWN => {
-            return 0;
-        }
-        _ => {}
+
+        DefWindowProcA(hwnd, msg, wparam, lparam)
     }
-
-    DefWindowProcA(hwnd, msg, wparam, lparam)
 }
