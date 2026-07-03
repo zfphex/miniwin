@@ -23,7 +23,7 @@ pub trait PlatformWindow {
     fn mouse_pressed(&self, button: Mouse) -> bool;
     fn mouse_released(&self, button: Mouse) -> bool;
     fn mouse_clicked(&self, button: Mouse, area: Rect) -> bool;
-    fn mouse_pos(&self) -> (f64, f64);
+    fn mouse_pos(&self) -> Option<(f64, f64)>;
     fn text_input(&self) -> &[char];
     fn dropped_files(&self) -> &[std::path::PathBuf];
     fn scroll_delta(&self) -> (f64, f64);
@@ -291,8 +291,7 @@ pub(crate) struct InputState {
     mouse_press_positions: [Option<(f64, f64)>; MOUSE_BUTTON_COUNT],
     mouse_release_positions: [Option<(f64, f64)>; MOUSE_BUTTON_COUNT],
     pressed_keys: Vec<Key>,
-    mouse_x: f64,
-    mouse_y: f64,
+    mouse_pos: Option<(f64, f64)>,
     scroll_delta: (f64, f64),
     modifiers: Modifiers,
     text_input: Vec<char>,
@@ -309,8 +308,7 @@ impl InputState {
             mouse_press_positions: [None; MOUSE_BUTTON_COUNT],
             mouse_release_positions: [None; MOUSE_BUTTON_COUNT],
             pressed_keys: Vec::new(),
-            mouse_x: 0.0,
-            mouse_y: 0.0,
+            mouse_pos: None,
             scroll_delta: (0.0, 0.0),
             modifiers: Modifiers::default(),
             text_input: Vec::new(),
@@ -385,8 +383,8 @@ impl InputState {
         point_in_rect(press_pos, area) && point_in_rect(release_pos, area)
     }
 
-    pub fn mouse_pos(&self) -> (f64, f64) {
-        (self.mouse_x, self.mouse_y)
+    pub fn mouse_pos(&self) -> Option<(f64, f64)> {
+        self.mouse_pos
     }
 
     pub fn text_input(&self) -> &[char] {
@@ -428,7 +426,7 @@ impl InputState {
         };
 
         if !self.current_mouse[index] {
-            self.mouse_press_positions[index] = Some((self.mouse_x, self.mouse_y));
+            self.mouse_press_positions[index] = self.mouse_pos;
         }
         self.current_mouse[index] = true;
     }
@@ -439,12 +437,11 @@ impl InputState {
         };
 
         self.current_mouse[index] = false;
-        self.mouse_release_positions[index] = Some((self.mouse_x, self.mouse_y));
+        self.mouse_release_positions[index] = self.mouse_pos;
     }
 
     pub(crate) fn set_mouse_pos(&mut self, x: f64, y: f64) {
-        self.mouse_x = x;
-        self.mouse_y = y;
+        self.mouse_pos = Some((x, y));
     }
 
     pub(crate) fn add_scroll(&mut self, delta_x: f64, delta_y: f64) {

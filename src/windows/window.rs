@@ -445,7 +445,7 @@ impl PlatformWindow for Window {
         self.input.mouse_clicked(button, area)
     }
 
-    fn mouse_pos(&self) -> (f64, f64) {
+    fn mouse_pos(&self) -> Option<(f64, f64)> {
         self.input.mouse_pos()
     }
 
