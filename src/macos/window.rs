@@ -440,7 +440,11 @@ impl crate::Window for Window {
         unsafe {
             let frame_sel = sel_registerName(b"frame\0".as_ptr() as *const _);
             let frame = msg_send_rect(self.ns_view, frame_sel);
-            (frame.size.width as usize, frame.size.height as usize)
+            let scale = self.scale_factor();
+            (
+                (frame.size.width * scale) as usize,
+                (frame.size.height * scale) as usize,
+            )
         }
     }
 

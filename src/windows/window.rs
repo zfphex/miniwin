@@ -522,6 +522,10 @@ impl crate::Window for Window {
     }
 
     fn present_framebuffer(&self) {
+        if self.area.width == 0 || self.area.height == 0 || self.buffer.is_empty() {
+            return;
+        }
+
         unsafe {
             StretchDIBits(
                 self.dc,
