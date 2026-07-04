@@ -724,7 +724,7 @@ impl PlatformWindow for Window {
     }
 
     fn raw_mouse_delta(&self) -> (f64, f64) {
-        (0.0, 0.0)
+        self.input.raw_mouse_delta()
     }
 
     fn modifiers(&self) -> Modifiers {
@@ -804,6 +804,12 @@ unsafe fn mouse_from_macos_event(ns_event: id, event_type: NSEventType) -> Optio
             _ => None,
         }
     }
+}
+
+unsafe fn msg_send_f64(receiver: id, selector: SEL) -> f64 {
+    let func: unsafe extern "C" fn(id, SEL) -> f64 =
+        unsafe { std::mem::transmute(objc_msgSend as *const std::ffi::c_void) };
+    unsafe { func(receiver, selector) }
 }
 
 unsafe fn translate_event(ns_event: id, input: &mut InputState) {
@@ -908,6 +914,10 @@ unsafe fn translate_event(ns_event: id, input: &mut InputState) {
                 let loc_func: unsafe extern "C" fn(id, SEL) -> NSPoint =
                     std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
                 let loc = loc_func(ns_event, loc_sel);
+                let delta_x =
+                    msg_send_f64(ns_event, sel_registerName(b"deltaX\0".as_ptr() as *const _));
+                let delta_y =
+                    msg_send_f64(ns_event, sel_registerName(b"deltaY\0".as_ptr() as *const _));
 
                 let x = loc.x;
                 let mut y = loc.y;
@@ -924,6 +934,7 @@ unsafe fn translate_event(ns_event: id, input: &mut InputState) {
                     y = frame.size.height - loc.y;
                 }
                 input.set_mouse_pos(x, y);
+                input.add_raw_mouse_delta(delta_x, -delta_y);
             }
             NSEventTypeLeftMouseDragged
             | NSEventTypeRightMouseDragged
@@ -932,6 +943,10 @@ unsafe fn translate_event(ns_event: id, input: &mut InputState) {
                 let loc_func: unsafe extern "C" fn(id, SEL) -> NSPoint =
                     std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
                 let loc = loc_func(ns_event, loc_sel);
+                let delta_x =
+                    msg_send_f64(ns_event, sel_registerName(b"deltaX\0".as_ptr() as *const _));
+                let delta_y =
+                    msg_send_f64(ns_event, sel_registerName(b"deltaY\0".as_ptr() as *const _));
 
                 let x = loc.x;
                 let mut y = loc.y;
@@ -948,6 +963,7 @@ unsafe fn translate_event(ns_event: id, input: &mut InputState) {
                     y = frame.size.height - loc.y;
                 }
                 input.set_mouse_pos(x, y);
+                input.add_raw_mouse_delta(delta_x, -delta_y);
                 if let Some(button) = mouse_from_macos_event(ns_event, event_type) {
                     input.set_mouse_down(button);
                 }
