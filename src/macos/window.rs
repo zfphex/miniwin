@@ -723,6 +723,10 @@ impl PlatformWindow for Window {
         self.input.scroll_delta()
     }
 
+    fn raw_mouse_delta(&self) -> (f64, f64) {
+        (0.0, 0.0)
+    }
+
     fn modifiers(&self) -> Modifiers {
         self.input.modifiers()
     }

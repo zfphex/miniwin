@@ -170,6 +170,18 @@ unsafe extern "system" {
     pub fn MonitorFromWindow(hwnd: isize, dwFlags: u32) -> *mut c_void;
     pub fn ClipCursor(lpRect: *const RECT) -> i32;
     pub fn SetCursor(hCursor: *mut c_void) -> *mut c_void;
+    pub fn RegisterRawInputDevices(
+        pRawInputDevices: *const RAWINPUTDEVICE,
+        uiNumDevices: UINT,
+        cbSize: UINT,
+    ) -> BOOL;
+    pub fn GetRawInputData(
+        hRawInput: HANDLE,
+        uiCommand: UINT,
+        pData: *mut c_void,
+        pcbSize: *mut UINT,
+        cbSizeHeader: UINT,
+    ) -> UINT;
     /// You must set the cbSize member of the structure to sizeof(MONITORINFO) or sizeof(MONITORINFOEX) before calling the GetMonitorInfo function.
     /// Doing so lets the function determine the type of structure you are passing to it.
     pub fn GetMonitorInfoA(hMonitor: *mut c_void, lpmi: *mut MONITORINFO) -> BOOL;
@@ -276,6 +288,89 @@ pub struct WNDCLASSA {
     pub background: isize,
     pub menu_name: *const u8,
     pub class_name: *const u8,
+}
+
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct RAWINPUTDEVICE {
+    pub usUsagePage: WORD,
+    pub usUsage: WORD,
+    pub dwFlags: DWORD,
+    pub hwndTarget: HWND,
+}
+
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct RAWINPUTHEADER {
+    pub dwType: DWORD,
+    pub dwSize: DWORD,
+    pub hDevice: HANDLE,
+    pub wParam: WPARAM,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union RAWMOUSE_BUTTONS {
+    pub ulButtons: DWORD,
+    pub buttons: RAWMOUSE_BUTTON_DATA,
+}
+
+impl Default for RAWMOUSE_BUTTONS {
+    fn default() -> Self {
+        Self { ulButtons: 0 }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct RAWMOUSE_BUTTON_DATA {
+    pub usButtonFlags: WORD,
+    pub usButtonData: WORD,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct RAWMOUSE {
+    pub usFlags: WORD,
+    pub buttons: RAWMOUSE_BUTTONS,
+    pub ulRawButtons: DWORD,
+    pub lLastX: LONG,
+    pub lLastY: LONG,
+    pub ulExtraInformation: DWORD,
+}
+
+impl Default for RAWMOUSE {
+    fn default() -> Self {
+        Self {
+            usFlags: 0,
+            buttons: RAWMOUSE_BUTTONS::default(),
+            ulRawButtons: 0,
+            lLastX: 0,
+            lLastY: 0,
+            ulExtraInformation: 0,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union RAWINPUT_DATA {
+    pub mouse: RAWMOUSE,
+}
+
+impl Default for RAWINPUT_DATA {
+    fn default() -> Self {
+        Self {
+            mouse: RAWMOUSE::default(),
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct RAWINPUT {
+    pub header: RAWINPUTHEADER,
+    pub data: RAWINPUT_DATA,
 }
 
 pub fn accent_color() -> u32 {

@@ -88,6 +88,11 @@ fn main() {
             }
         }
 
+        let raw_delta = window.raw_mouse_delta();
+        if raw_delta != (0.0, 0.0) {
+            println!("Raw mouse delta: {:?}", raw_delta);
+        }
+
         if !window.dropped_files().is_empty() {
             println!("Dropped Files:");
             for file in window.dropped_files() {

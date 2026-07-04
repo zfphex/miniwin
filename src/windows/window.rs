@@ -89,6 +89,7 @@ pub fn create_window(
         }
 
         assert_ne!(hwnd, 0);
+        register_raw_mouse_input(hwnd);
         let dc = GetDC(hwnd);
 
         // Construct window, initialize WGL, then pin.
@@ -461,6 +462,10 @@ impl PlatformWindow for Window {
         self.input.scroll_delta()
     }
 
+    fn raw_mouse_delta(&self) -> (f64, f64) {
+        self.input.raw_mouse_delta()
+    }
+
     fn modifiers(&self) -> Modifiers {
         self.input.modifiers()
     }
@@ -659,6 +664,46 @@ fn current_modifiers() -> Modifiers {
     }
 }
 
+fn register_raw_mouse_input(hwnd: HWND) {
+    static REGISTER: std::sync::Once = std::sync::Once::new();
+
+    REGISTER.call_once(|| {
+        let device = RAWINPUTDEVICE {
+            usUsagePage: 0x01,
+            usUsage: 0x02,
+            dwFlags: 0,
+            hwndTarget: hwnd,
+        };
+
+        let ok = unsafe {
+            RegisterRawInputDevices(&device, 1, std::mem::size_of::<RAWINPUTDEVICE>() as UINT)
+        };
+        debug_assert!(ok != 0, "RegisterRawInputDevices failed");
+    });
+}
+
+unsafe fn handle_raw_input(lparam: isize, input: &mut InputState) -> bool {
+    let mut raw_input = RAWINPUT::default();
+    let mut size = std::mem::size_of::<RAWINPUT>() as UINT;
+    let bytes_read = unsafe {
+        GetRawInputData(
+            lparam as HANDLE,
+            RID_INPUT,
+            &mut raw_input as *mut RAWINPUT as *mut c_void,
+            &mut size,
+            std::mem::size_of::<RAWINPUTHEADER>() as UINT,
+        )
+    };
+
+    if bytes_read == UINT::MAX || bytes_read != size || raw_input.header.dwType != RIM_TYPEMOUSE {
+        return false;
+    }
+
+    let mouse = unsafe { raw_input.data.mouse };
+    input.add_raw_mouse_delta(mouse.lLastX as f64, mouse.lLastY as f64);
+    true
+}
+
 pub unsafe extern "system" fn wnd_proc(
     hwnd: isize,
     msg: u32,
@@ -764,6 +809,9 @@ pub unsafe extern "system" fn wnd_proc(
                     window.input.add_text(c);
                 }
                 return 0;
+            }
+            WM_INPUT => {
+                handle_raw_input(lparam, &mut window.input);
             }
             WM_MOUSEMOVE => {
                 window.input.set_mouse_pos(mouse_x, mouse_y);

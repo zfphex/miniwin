@@ -27,6 +27,7 @@ pub trait PlatformWindow {
     fn text_input(&self) -> &[char];
     fn dropped_files(&self) -> &[std::path::PathBuf];
     fn scroll_delta(&self) -> (f64, f64);
+    fn raw_mouse_delta(&self) -> (f64, f64);
     fn modifiers(&self) -> Modifiers;
     fn framebuffer(&mut self) -> &mut [u32];
     fn present(&self);
@@ -293,6 +294,7 @@ pub(crate) struct InputState {
     pressed_keys: Vec<Key>,
     mouse_pos: Option<(f64, f64)>,
     scroll_delta: (f64, f64),
+    raw_mouse_delta: (f64, f64),
     modifiers: Modifiers,
     text_input: Vec<char>,
     dropped_files: Vec<std::path::PathBuf>,
@@ -310,6 +312,7 @@ impl InputState {
             pressed_keys: Vec::new(),
             mouse_pos: None,
             scroll_delta: (0.0, 0.0),
+            raw_mouse_delta: (0.0, 0.0),
             modifiers: Modifiers::default(),
             text_input: Vec::new(),
             dropped_files: Vec::new(),
@@ -324,6 +327,7 @@ impl InputState {
         self.text_input.clear();
         self.dropped_files.clear();
         self.scroll_delta = (0.0, 0.0);
+        self.raw_mouse_delta = (0.0, 0.0);
     }
 
     pub fn is_down(&self, key: Key) -> bool {
@@ -399,6 +403,10 @@ impl InputState {
         self.scroll_delta
     }
 
+    pub fn raw_mouse_delta(&self) -> (f64, f64) {
+        self.raw_mouse_delta
+    }
+
     pub fn modifiers(&self) -> Modifiers {
         self.modifiers
     }
@@ -447,6 +455,11 @@ impl InputState {
     pub(crate) fn add_scroll(&mut self, delta_x: f64, delta_y: f64) {
         self.scroll_delta.0 += delta_x;
         self.scroll_delta.1 += delta_y;
+    }
+
+    pub(crate) fn add_raw_mouse_delta(&mut self, delta_x: f64, delta_y: f64) {
+        self.raw_mouse_delta.0 += delta_x;
+        self.raw_mouse_delta.1 += delta_y;
     }
 
     pub(crate) fn add_text(&mut self, c: char) {

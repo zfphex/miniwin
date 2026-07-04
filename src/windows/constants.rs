@@ -10,6 +10,7 @@ pub const WM_CLOSE: u32 = 0x0010;
 pub const WM_KEYDOWN: u32 = 0x0100;
 pub const WM_KEYUP: u32 = 0x0101;
 pub const WM_CHAR: u32 = 0x0102;
+pub const WM_INPUT: u32 = 0x00FF;
 pub const WM_SYSKEYDOWN: u32 = 0x0104;
 pub const WM_SYSKEYUP: u32 = 0x0105;
 pub const WM_MOUSEMOVE: u32 = 0x0200;
@@ -31,6 +32,9 @@ pub const MK_RBUTTON: u32 = 0x0002;
 pub const MK_MBUTTON: u32 = 0x0010;
 pub const MK_XBUTTON1: u32 = 0x0020;
 pub const MK_XBUTTON2: u32 = 0x0040;
+
+pub const RID_INPUT: u32 = 0x10000003;
+pub const RIM_TYPEMOUSE: u32 = 0;
 
 pub const GWLP_USERDATA: i32 = -21;
 
