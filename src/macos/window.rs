@@ -334,17 +334,7 @@ pub fn create_window(
     }
 }
 
-impl Window {
-    pub fn make_key_and_order_front(&self) {
-        unsafe {
-            msg_send_id_id_void(
-                self.ns_window,
-                sel_registerName(b"makeKeyAndOrderFront:\0".as_ptr() as *const _),
-                nil,
-            );
-        }
-    }
-}
+
 
 impl PlatformWindow for Window {
     fn framebuffer(&mut self) -> &mut [u32] {
@@ -860,7 +850,7 @@ unsafe fn translate_event(ns_event: id, input: &mut InputState) {
             std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
         let flags = modifier_flags_func(ns_event, modifier_flags_sel);
         let modifiers = parse_modifiers(flags);
-        input.set_modifiers(modifiers);
+        input.modifiers = modifiers;
 
         match event_type {
             NSEventTypeKeyDown | NSEventTypeKeyUp => {
@@ -897,7 +887,9 @@ unsafe fn translate_event(ns_event: id, input: &mut InputState) {
                                 let c_str = std::ffi::CStr::from_ptr(utf8_ptr);
                                 if let Ok(s) = c_str.to_str() {
                                     for c in s.chars() {
-                                        input.add_text(c);
+                                        if !c.is_control() {
+                                            input.text_input.push(c);
+                                        }
                                     }
                                 }
                             }
@@ -933,7 +925,7 @@ unsafe fn translate_event(ns_event: id, input: &mut InputState) {
                     y = frame.size.height - loc.y;
                 }
 
-                input.set_mouse_pos(x, y);
+                input.mouse_pos = Some((x, y));
                 if let Some(button) = mouse_from_macos_event(ns_event, event_type) {
                     if event_type == NSEventTypeLeftMouseDown
                         || event_type == NSEventTypeRightMouseDown
@@ -969,8 +961,9 @@ unsafe fn translate_event(ns_event: id, input: &mut InputState) {
                     let frame = msg_send_rect(content_view, frame_sel);
                     y = frame.size.height - loc.y;
                 }
-                input.set_mouse_pos(x, y);
-                input.add_raw_mouse_delta(delta_x, -delta_y);
+                input.mouse_pos = Some((x, y));
+                input.raw_mouse_delta.0 += delta_x;
+                input.raw_mouse_delta.1 += -delta_y;
             }
             NSEventTypeLeftMouseDragged
             | NSEventTypeRightMouseDragged
@@ -998,8 +991,9 @@ unsafe fn translate_event(ns_event: id, input: &mut InputState) {
                     let frame = msg_send_rect(content_view, frame_sel);
                     y = frame.size.height - loc.y;
                 }
-                input.set_mouse_pos(x, y);
-                input.add_raw_mouse_delta(delta_x, -delta_y);
+                input.mouse_pos = Some((x, y));
+                input.raw_mouse_delta.0 += delta_x;
+                input.raw_mouse_delta.1 += -delta_y;
                 if let Some(button) = mouse_from_macos_event(ns_event, event_type) {
                     input.set_mouse_down(button);
                 }
@@ -1011,7 +1005,8 @@ unsafe fn translate_event(ns_event: id, input: &mut InputState) {
                     std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
                 let delta_x = double_func(ns_event, dx_sel);
                 let delta_y = double_func(ns_event, dy_sel);
-                input.add_scroll(delta_x, delta_y);
+                input.scroll_delta.0 += delta_x;
+                input.scroll_delta.1 += delta_y;
             }
             _ => {}
         }
@@ -1330,7 +1325,7 @@ extern "C" fn perform_drag_operation(_this: id, _cmd: SEL, sender: id) -> BOOL {
         ACTIVE_WINDOW.with(|w| {
             let window = w.get();
             if !window.is_null() {
-                (*window).input.add_dropped_files(file_paths);
+                (*window).input.dropped_files.extend(file_paths);
             }
         });
         YES

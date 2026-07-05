@@ -450,37 +450,6 @@ impl InputState {
         self.mouse_release_positions[index] = self.mouse_pos;
     }
 
-    pub(crate) fn set_mouse_pos(&mut self, x: f64, y: f64) {
-        self.mouse_pos = Some((x, y));
-    }
-
-    pub(crate) fn add_scroll(&mut self, delta_x: f64, delta_y: f64) {
-        self.scroll_delta.0 += delta_x;
-        self.scroll_delta.1 += delta_y;
-    }
-
-    pub(crate) fn add_raw_mouse_delta(&mut self, delta_x: f64, delta_y: f64) {
-        self.raw_mouse_delta.0 += delta_x;
-        self.raw_mouse_delta.1 += delta_y;
-    }
-
-    pub(crate) fn add_text(&mut self, c: char) {
-        if !c.is_control() {
-            self.text_input.push(c);
-        }
-    }
-
-    pub(crate) fn add_dropped_files<I>(&mut self, files: I)
-    where
-        I: IntoIterator<Item = std::path::PathBuf>,
-    {
-        self.dropped_files.extend(files);
-    }
-
-    pub(crate) fn set_modifiers(&mut self, modifiers: Modifiers) {
-        self.modifiers = modifiers;
-    }
-
     fn key_index(&self, key: Key) -> Option<usize> {
         let index = key.vk_code();
         (index < self.current_keys.len()).then_some(index)
@@ -592,24 +561,6 @@ impl Rect {
             Rect::new(0, 0, 0, 0)
         }
     }
-    // pub fn split_h(&self, left_width: usize) -> (Rect, Rect) {
-    //     let total_w = (self.x + self.width).saturating_sub(self.x);
-    //     let total_h = (self.y + self.height).saturating_sub(self.y);
-    //     let left_w = left_width.min(total_w);
-    //     let right_w = total_w.saturating_sub(left_w);
-    //     let left_rect = Rect::new(self.x, self.y, left_w, total_h);
-    //     let right_rect = Rect::new(self.x + left_w, self.y, right_w, total_h);
-    //     (left_rect, right_rect)
-    // }
-    // pub fn split_v(&self, top_height: usize) -> (Rect, Rect) {
-    //     let total_w = (self.x + self.width).saturating_sub(self.x);
-    //     let total_h = (self.y + self.height).saturating_sub(self.y);
-    //     let top_h = top_height.min(total_h);
-    //     let bottom_h = total_h.saturating_sub(top_h);
-    //     let top_rect = Rect::new(self.x, self.y, total_w, top_h);
-    //     let bottom_rect = Rect::new(self.x, self.y + top_h, total_w, bottom_h);
-    //     (top_rect, bottom_rect)
-    // }
     pub const fn inner(&self, w: usize, h: usize) -> Rect {
         Rect {
             x: self.x + w,

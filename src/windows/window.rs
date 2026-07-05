@@ -708,7 +708,8 @@ unsafe fn handle_raw_input(lparam: isize, input: &mut InputState) -> bool {
     }
 
     let mouse = unsafe { raw_input.data.mouse };
-    input.add_raw_mouse_delta(mouse.lLastX as f64, mouse.lLastY as f64);
+    input.raw_mouse_delta.0 += mouse.lLastX as f64;
+    input.raw_mouse_delta.1 += mouse.lLastY as f64;
     true
 }
 
@@ -761,7 +762,7 @@ pub unsafe extern "system" fn wnd_proc(
                     }
                 }
                 DragFinish(hdrop);
-                window.input.add_dropped_files(files);
+                window.input.dropped_files.extend(files);
                 return 0;
             }
             WM_DESTROY => {
@@ -814,7 +815,9 @@ pub unsafe extern "system" fn wnd_proc(
             }
             WM_CHAR => {
                 if let Some(c) = char::from_u32(wparam as u32) {
-                    window.input.add_text(c);
+                    if !c.is_control() {
+                        window.input.text_input.push(c);
+                    }
                 }
                 return 0;
             }
@@ -822,28 +825,39 @@ pub unsafe extern "system" fn wnd_proc(
                 handle_raw_input(lparam, &mut window.input);
             }
             WM_MOUSEMOVE => {
-                window.input.set_mouse_pos(mouse_x, mouse_y);
+                window.input.mouse_pos = Some((mouse_x, mouse_y));
+                let mut tme = TRACKMOUSEEVENT {
+                    cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as DWORD,
+                    dwFlags: TME_LEAVE,
+                    hwndTrack: hwnd,
+                    dwHoverTime: 0,
+                };
+                TrackMouseEvent(&mut tme);
+            }
+            WM_MOUSELEAVE => {
+                window.input.mouse_pos = None;
             }
             WM_MOUSEWHEEL => {
                 const WHEEL_DELTA: i16 = 120;
                 let value = (wparam >> 16) as i16;
-                let delta = value as f64 / WHEEL_DELTA as f64;
-                window.input.add_scroll(0.0, delta);
+                let delta_y = value as f64 / WHEEL_DELTA as f64;
+                window.input.scroll_delta.0 += 0.0;
+                window.input.scroll_delta.1 += delta_y;
                 return 0;
             }
             WM_KEYDOWN | WM_SYSKEYDOWN => {
                 let keycode = wparam as u16;
                 window.input.set_key_down(Key::from_windows_vk(keycode));
-                window.input.set_modifiers(current_modifiers());
+                window.input.modifiers = current_modifiers();
             }
             WM_KEYUP | WM_SYSKEYUP => {
                 let keycode = wparam as u16;
                 window.input.set_key_up(Key::from_windows_vk(keycode));
-                window.input.set_modifiers(current_modifiers());
+                window.input.modifiers = current_modifiers();
             }
             WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_XBUTTONDOWN => {
                 SetCapture(hwnd);
-                window.input.set_mouse_pos(mouse_x, mouse_y);
+                window.input.mouse_pos = Some((mouse_x, mouse_y));
                 match msg {
                     WM_LBUTTONDOWN => window.input.set_mouse_down(Mouse::Left),
                     WM_RBUTTONDOWN => window.input.set_mouse_down(Mouse::Right),
@@ -858,7 +872,7 @@ pub unsafe extern "system" fn wnd_proc(
                     }
                     _ => {}
                 }
-                window.input.set_modifiers(current_modifiers());
+                window.input.modifiers = current_modifiers();
             }
             WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP | WM_XBUTTONUP => {
                 // Only release capture if no other mouse buttons are currently being held down.
@@ -869,7 +883,7 @@ pub unsafe extern "system" fn wnd_proc(
                     ReleaseCapture();
                 }
 
-                window.input.set_mouse_pos(mouse_x, mouse_y);
+                window.input.mouse_pos = Some((mouse_x, mouse_y));
                 match msg {
                     WM_LBUTTONUP => window.input.set_mouse_up(Mouse::Left),
                     WM_RBUTTONUP => window.input.set_mouse_up(Mouse::Right),
@@ -884,7 +898,7 @@ pub unsafe extern "system" fn wnd_proc(
                     }
                     _ => {}
                 }
-                window.input.set_modifiers(current_modifiers());
+                window.input.modifiers = current_modifiers();
             }
             WM_KILLFOCUS => {
                 window.focused = false;

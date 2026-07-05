@@ -117,6 +117,7 @@ unsafe extern "system" {
     pub fn SetCursor(hCursor: *mut c_void) -> *mut c_void;
     pub fn GetMonitorInfoA(hMonitor: *mut c_void, lpmi: *mut MONITORINFO) -> BOOL;
     pub fn WaitMessage() -> BOOL;
+    pub fn TrackMouseEvent(lpEventTrack: *mut TRACKMOUSEEVENT) -> BOOL;
     pub fn CreateWindowExA(
         dwexstyle: u32,
         lpclassname: *const u8,
@@ -202,6 +203,15 @@ impl GUID {
 pub struct POINT {
     pub x: i32,
     pub y: i32,
+}
+
+#[repr(C)]
+#[derive(Debug, Default, Clone)]
+pub struct TRACKMOUSEEVENT {
+    pub cbSize: DWORD,
+    pub dwFlags: DWORD,
+    pub hwndTrack: HWND,
+    pub dwHoverTime: DWORD,
 }
 
 impl Rect {
