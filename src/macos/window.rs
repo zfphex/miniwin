@@ -730,6 +730,42 @@ impl PlatformWindow for Window {
     fn modifiers(&self) -> Modifiers {
         self.input.modifiers()
     }
+
+    fn wait_for_event(&self) {
+        // Block the current thread until the OS delivers any window event.
+        // We peek with `dequeue: NO` so the event stays in the queue for the
+        // draw loop to process on the very next frame.
+        unsafe {
+            let ns_app = msg_send_id(
+                objc_getClass(b"NSApplication\0".as_ptr() as *const _),
+                sel_registerName(b"sharedApplication\0".as_ptr() as *const _),
+            );
+
+            let date_class = objc_getClass(b"NSDate\0".as_ptr() as *const _);
+            let distant_future = msg_send_id(
+                date_class,
+                sel_registerName(b"distantFuture\0".as_ptr() as *const _),
+            );
+
+            let mode = nsstring("kCFRunLoopDefaultMode");
+
+            let next_event_func: unsafe extern "C" fn(id, SEL, u64, id, id, BOOL) -> id =
+                std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+
+            // Block until an event arrives. dequeue: NO means we don't consume
+            // the event here — the draw loop will pick it up on the next tick.
+            next_event_func(
+                ns_app,
+                sel_registerName(
+                    b"nextEventMatchingMask:untilDate:inMode:dequeue:\0".as_ptr() as *const _,
+                ),
+                NSEventMaskAny,
+                distant_future,
+                mode,
+                NO,
+            );
+        }
+    }
 }
 
 impl Drop for Window {

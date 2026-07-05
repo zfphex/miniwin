@@ -63,46 +63,19 @@ unsafe extern "system" {
 
 #[link(name = "user32")]
 unsafe extern "system" {
-    pub fn CreateWindowExA(
-        dwexstyle: u32,
-        lpclassname: *const u8,
-        lpwindowname: *const u8,
-        dwstyle: u32,
-        x: i32,
-        y: i32,
-        nwidth: i32,
-        nheight: i32,
-        hwndparent: isize,
-        hmenu: isize,
-        hinstance: isize,
-        lpparam: *const std::ffi::c_void,
-    ) -> isize;
-    pub fn PeekMessageA(
-        msg: *mut MSG,
-        hwnd: isize,
-        msg_filter_min: u32,
-        msg_filter_max: u32,
-        remove_msg: u32,
-    ) -> i32;
-    pub fn GetMessageA(msg: *mut MSG, hwnd: isize, msg_filter_min: u32, msg_filter_max: u32)
-    -> i32;
     pub fn PostQuitMessage(nExitCode: i32);
     pub fn RegisterClassA(lpwndclass: *const WNDCLASSA) -> u16;
     pub fn DispatchMessageA(lpMsg: *const MSG) -> isize;
-    ///Translates virtual-key messages into character messages.
     pub fn TranslateMessage(lpMsg: *const MSG) -> i32;
     pub fn GetLastError() -> u32;
     pub fn GetProcAddress(hModule: *mut c_void, lpProcName: *const i8) -> *mut c_void;
     pub fn LoadLibraryA(lpFileName: *const i8) -> *mut c_void;
-
     pub fn GetDC(hwnd: isize) -> *mut c_void;
     pub fn GetPixel(hdc: *mut c_void, x: i32, y: i32) -> u32;
     pub fn GetFocus() -> HWND;
-
     pub fn WindowFromPoint(point: POINT) -> HWND;
     pub fn GetDeviceCaps(hdc: *mut c_void, index: i32) -> i32;
     pub fn GetSystemMetrics(nIndex: i32) -> i32;
-
     pub fn LoadCursorW(hInstance: *mut c_void, lpCursorName: *const u16) -> *mut c_void;
     pub fn GetAsyncKeyState(vKey: i32) -> i16;
     pub fn GetKeyState(nVirtKey: i32) -> i16;
@@ -127,6 +100,58 @@ unsafe extern "system" {
     pub fn ClientToScreen(hwnd: isize, lpPoint: *mut POINT) -> i32;
     pub fn ScreenToClient(hwnd: isize, point: *mut POINT) -> i32;
     pub fn ValidateRect(hwnd: isize, lpRect: *const RECT) -> i32;
+    pub fn SetLayeredWindowAttributes(hwnd: isize, color_key: u32, alpha: u8, flags: u32) -> i32;
+    pub fn GetSystemMetricsForDpi(nIndex: i32, dpi: u32) -> i32;
+    pub fn GetThreadDpiAwarenessContext() -> *mut c_void;
+    pub fn SetThreadDpiAwarenessContext(dpi_context: *mut c_void) -> isize;
+    pub fn GetWindowDpiAwarenessContext(hwnd: isize) -> *mut c_void;
+    pub fn GetDpiForWindow(hwnd: isize) -> u32;
+    pub fn ReleaseCapture() -> i32;
+    pub fn SetCursorPos(X: i32, Y: i32) -> i32;
+    pub fn ShowCursor(bShow: i32) -> i32;
+    pub fn SetCapture(hwnd: isize) -> isize;
+    pub fn LoadIconA(hInstance: *mut c_void, lpIconName: *const i8) -> *mut c_void;
+    pub fn SetWindowTextA(hwnd: isize, lpString: *const u8) -> i32;
+    pub fn MonitorFromWindow(hwnd: isize, dwFlags: u32) -> *mut c_void;
+    pub fn ClipCursor(lpRect: *const RECT) -> i32;
+    pub fn SetCursor(hCursor: *mut c_void) -> *mut c_void;
+    pub fn GetMonitorInfoA(hMonitor: *mut c_void, lpmi: *mut MONITORINFO) -> BOOL;
+    pub fn WaitMessage() -> BOOL;
+    pub fn CreateWindowExA(
+        dwexstyle: u32,
+        lpclassname: *const u8,
+        lpwindowname: *const u8,
+        dwstyle: u32,
+        x: i32,
+        y: i32,
+        nwidth: i32,
+        nheight: i32,
+        hwndparent: isize,
+        hmenu: isize,
+        hinstance: isize,
+        lpparam: *const std::ffi::c_void,
+    ) -> isize;
+    pub fn PeekMessageA(
+        msg: *mut MSG,
+        hwnd: isize,
+        msg_filter_min: u32,
+        msg_filter_max: u32,
+        remove_msg: u32,
+    ) -> i32;
+    pub fn GetMessageA(msg: *mut MSG, hwnd: isize, msg_filter_min: u32, msg_filter_max: u32)
+    -> i32;
+    pub fn RegisterRawInputDevices(
+        pRawInputDevices: *const RAWINPUTDEVICE,
+        uiNumDevices: UINT,
+        cbSize: UINT,
+    ) -> BOOL;
+    pub fn GetRawInputData(
+        hRawInput: HANDLE,
+        uiCommand: UINT,
+        pData: *mut c_void,
+        pcbSize: *mut UINT,
+        cbSizeHeader: UINT,
+    ) -> UINT;
     pub fn SetWindowPos(
         hWnd: isize,
         hWndInsertAfter: isize,
@@ -150,41 +175,6 @@ unsafe extern "system" {
         pvAttribute: *mut c_void,
         cbAttribute: u32,
     ) -> i32;
-
-    pub fn SetLayeredWindowAttributes(hwnd: isize, color_key: u32, alpha: u8, flags: u32) -> i32;
-
-    pub fn GetSystemMetricsForDpi(nIndex: i32, dpi: u32) -> i32;
-
-    pub fn GetThreadDpiAwarenessContext() -> *mut c_void;
-    pub fn SetThreadDpiAwarenessContext(dpi_context: *mut c_void) -> isize;
-
-    pub fn GetWindowDpiAwarenessContext(hwnd: isize) -> *mut c_void;
-
-    pub fn GetDpiForWindow(hwnd: isize) -> u32;
-    pub fn ReleaseCapture() -> i32;
-    pub fn SetCursorPos(X: i32, Y: i32) -> i32;
-    pub fn ShowCursor(bShow: i32) -> i32;
-    pub fn SetCapture(hwnd: isize) -> isize;
-    pub fn LoadIconA(hInstance: *mut c_void, lpIconName: *const i8) -> *mut c_void;
-    pub fn SetWindowTextA(hwnd: isize, lpString: *const u8) -> i32;
-    pub fn MonitorFromWindow(hwnd: isize, dwFlags: u32) -> *mut c_void;
-    pub fn ClipCursor(lpRect: *const RECT) -> i32;
-    pub fn SetCursor(hCursor: *mut c_void) -> *mut c_void;
-    pub fn RegisterRawInputDevices(
-        pRawInputDevices: *const RAWINPUTDEVICE,
-        uiNumDevices: UINT,
-        cbSize: UINT,
-    ) -> BOOL;
-    pub fn GetRawInputData(
-        hRawInput: HANDLE,
-        uiCommand: UINT,
-        pData: *mut c_void,
-        pcbSize: *mut UINT,
-        cbSizeHeader: UINT,
-    ) -> UINT;
-    /// You must set the cbSize member of the structure to sizeof(MONITORINFO) or sizeof(MONITORINFOEX) before calling the GetMonitorInfo function.
-    /// Doing so lets the function determine the type of structure you are passing to it.
-    pub fn GetMonitorInfoA(hMonitor: *mut c_void, lpmi: *mut MONITORINFO) -> BOOL;
 }
 
 #[repr(C)]

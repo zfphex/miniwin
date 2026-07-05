@@ -480,6 +480,14 @@ impl PlatformWindow for Window {
         unsafe { DwmFlush() };
     }
 
+    fn wait_for_event(&self) {
+        if self.use_gpu {
+            return;
+        }
+
+        unsafe { WaitMessage() };
+    }
+
     fn framebuffer(&mut self) -> &mut [u32] {
         let (content_width, content_height) = self.content_size();
         let scale = self.scale_factor() as f32;

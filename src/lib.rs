@@ -34,6 +34,8 @@ pub trait PlatformWindow {
     fn scale_factor(&self) -> f64;
     fn content_size(&self) -> (usize, usize);
     fn wait_for_vsync(&self);
+    /// Block the calling thread until the OS queues a new window event.
+    fn wait_for_event(&self);
     fn set_cursor_visible(&self, visible: bool);
     fn set_cursor_grab(&self, grab: bool);
     fn set_cursor_icon(&self, icon: CursorIcon);
