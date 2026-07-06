@@ -316,6 +316,12 @@ pub fn create_window(
             nil,
         );
 
+        msg_send_id_id_void(
+            ns_window,
+            sel_registerName(b"makeFirstResponder:\0".as_ptr() as *const _),
+            ns_view,
+        );
+
         let vsync = VsyncTracker::new();
 
         Box::pin(Window {
@@ -333,8 +339,6 @@ pub fn create_window(
         })
     }
 }
-
-
 
 impl PlatformWindow for Window {
     fn framebuffer(&mut self) -> &mut [u32] {
@@ -1056,12 +1060,39 @@ pub fn register_delegate_class() -> Class {
             b"v@:@\0".as_ptr() as *const _,
         );
 
+        class_addMethod(
+            cls,
+            sel_registerName(b"windowDidBecomeKey:\0".as_ptr() as *const _),
+            std::mem::transmute(window_did_become_key as *const std::ffi::c_void),
+            b"v@:@\0".as_ptr() as *const _,
+        );
+
         objc_registerClassPair(cls);
     });
     if cls.is_null() {
         unsafe { objc_getClass(b"RustWindowDelegate\0".as_ptr() as *const _) }
     } else {
         cls
+    }
+}
+
+extern "C" fn window_did_become_key(_this: id, _cmd: SEL, notification: id) {
+    unsafe {
+        let window: id = msg_send_id(
+            notification,
+            sel_registerName(b"object\0".as_ptr() as *const _),
+        );
+        let content_view = msg_send_id(
+            window,
+            sel_registerName(b"contentView\0".as_ptr() as *const _),
+        );
+        if !content_view.is_null() {
+            msg_send_id_id_void(
+                window,
+                sel_registerName(b"makeFirstResponder:\0".as_ptr() as *const _),
+                content_view,
+            );
+        }
     }
 }
 
@@ -1247,6 +1278,34 @@ pub fn register_view_class() -> Class {
             b"c@:@\0".as_ptr() as *const _,
         );
 
+        class_addMethod(
+            cls,
+            sel_registerName(b"acceptsFirstResponder\0".as_ptr() as *const _),
+            std::mem::transmute(view_accepts_first_responder as *const std::ffi::c_void),
+            b"c@:\0".as_ptr() as *const _,
+        );
+
+        class_addMethod(
+            cls,
+            sel_registerName(b"keyDown:\0".as_ptr() as *const _),
+            std::mem::transmute(view_key_down as *const std::ffi::c_void),
+            b"v@:@\0".as_ptr() as *const _,
+        );
+
+        class_addMethod(
+            cls,
+            sel_registerName(b"keyUp:\0".as_ptr() as *const _),
+            std::mem::transmute(view_key_up as *const std::ffi::c_void),
+            b"v@:@\0".as_ptr() as *const _,
+        );
+
+        class_addMethod(
+            cls,
+            sel_registerName(b"mouseDown:\0".as_ptr() as *const _),
+            std::mem::transmute(view_mouse_down as *const std::ffi::c_void),
+            b"v@:@\0".as_ptr() as *const _,
+        );
+
         objc_registerClassPair(cls);
     });
 
@@ -1254,6 +1313,31 @@ pub fn register_view_class() -> Class {
         unsafe { objc_getClass(b"RustView\0".as_ptr() as *const _) }
     } else {
         cls
+    }
+}
+
+extern "C" fn view_accepts_first_responder(_this: id, _cmd: SEL) -> BOOL {
+    YES
+}
+
+extern "C" fn view_key_down(_this: id, _cmd: SEL, _event: id) {
+    // Consume keyboard events so AppKit does not NSBeep() for unhandled keys.
+}
+
+extern "C" fn view_key_up(_this: id, _cmd: SEL, _event: id) {
+    // Consume keyboard events so AppKit does not NSBeep() for unhandled keys.
+}
+
+extern "C" fn view_mouse_down(this: id, _cmd: SEL, _event: id) {
+    unsafe {
+        let window = msg_send_id(this, sel_registerName(b"window\0".as_ptr() as *const _));
+        if !window.is_null() {
+            msg_send_id_id_void(
+                window,
+                sel_registerName(b"makeFirstResponder:\0".as_ptr() as *const _),
+                this,
+            );
+        }
     }
 }
 
