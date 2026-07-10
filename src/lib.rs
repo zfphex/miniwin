@@ -31,6 +31,7 @@ pub trait PlatformWindow {
     fn modifiers(&self) -> Modifiers;
     fn framebuffer(&mut self) -> &mut [u32];
     fn present(&self);
+    fn present_regions(&self, regions: &[Rect]);
     fn scale_factor(&self) -> f64;
     fn content_size(&self) -> (usize, usize);
     fn wait_for_vsync(&self);

@@ -416,6 +416,12 @@ impl PlatformWindow for Window {
         }
     }
 
+    fn present_regions(&self, regions: &[Rect]) {
+        if !regions.is_empty() {
+            self.present();
+        }
+    }
+
     fn scale_factor(&self) -> f64 {
         unsafe {
             let sel = sel_registerName(b"backingScaleFactor\0".as_ptr() as *const _);
