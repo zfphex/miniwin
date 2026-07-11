@@ -29,6 +29,7 @@ pub trait PlatformWindow {
     fn scroll_delta(&self) -> (f64, f64);
     fn raw_mouse_delta(&self) -> (f64, f64);
     fn modifiers(&self) -> Modifiers;
+    fn framebuffer_size(&self) -> (usize, usize);
     fn framebuffer(&mut self) -> &mut [u32];
     fn present(&self);
     fn scale_factor(&self) -> f64;
@@ -480,7 +481,7 @@ fn point_in_rect((x, y): (f64, f64), area: Rect) -> bool {
     x >= area.x as f64 && x < area.right() as f64 && y >= area.y as f64 && y < area.bottom() as f64
 }
 
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Rect {
     pub x: i32,
     pub y: i32,

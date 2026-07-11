@@ -491,10 +491,7 @@ impl PlatformWindow for Window {
     }
 
     fn framebuffer(&mut self) -> &mut [u32] {
-        let (content_width, content_height) = self.content_size();
-        let scale = self.scale_factor() as f32;
-        let width = (content_width as f32 * scale).round() as usize;
-        let height = (content_height as f32 * scale).round() as usize;
+        let (width, height) = self.framebuffer_size();
 
         if self.buffer.len() != width * height {
             self.buffer.resize(width * height, 0);
@@ -503,6 +500,11 @@ impl PlatformWindow for Window {
         }
 
         &mut self.buffer
+    }
+
+    fn framebuffer_size(&self) -> (usize, usize) {
+        let rect = self.client_area();
+        (rect.width.max(0) as usize, rect.height.max(0) as usize)
     }
 
     fn present(&self) {
