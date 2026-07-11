@@ -100,6 +100,7 @@ unsafe extern "system" {
     pub fn ClientToScreen(hwnd: isize, lpPoint: *mut POINT) -> i32;
     pub fn ScreenToClient(hwnd: isize, point: *mut POINT) -> i32;
     pub fn ValidateRect(hwnd: isize, lpRect: *const RECT) -> i32;
+    pub fn InvalidateRect(hwnd: isize, lpRect: *const RECT, erase: i32) -> i32;
     pub fn SetLayeredWindowAttributes(hwnd: isize, color_key: u32, alpha: u8, flags: u32) -> i32;
     pub fn GetSystemMetricsForDpi(nIndex: i32, dpi: u32) -> i32;
     pub fn GetThreadDpiAwarenessContext() -> *mut c_void;

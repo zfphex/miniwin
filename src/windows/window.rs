@@ -386,6 +386,7 @@ impl PlatformWindow for Window {
 
         self.render_callback = &mut render as *mut F as *mut c_void;
         self.render_executor = Some(execute_render::<F>);
+        self.native_repaint_requested = false;
 
         unsafe {
             let mut msg = MSG::default();
@@ -398,7 +399,9 @@ impl PlatformWindow for Window {
         self.render_callback = std::ptr::null_mut();
         self.render_executor = None;
 
-        render(self);
+        if !self.native_repaint_requested {
+            render(self);
+        }
     }
 
     fn open(&self) -> bool {
@@ -738,7 +741,6 @@ pub unsafe extern "system" fn wnd_proc(
         let window: &mut Window = &mut *ptr;
 
         let low = (lparam & 0xffff) as usize;
-        let high = ((lparam >> 16) & 0xffff) as usize;
         let mouse_x = lparam as i16 as f64 / window.display_scale as f64;
         let mouse_y = (lparam >> 16) as i16 as f64 / window.display_scale as f64;
 
@@ -775,16 +777,16 @@ pub unsafe extern "system" fn wnd_proc(
                 return 0;
             }
             WM_SIZE => {
-                let (width, height) = (low, high);
-                window.native_repaint_requested = true;
-                invoke_render_callback(window);
-                window.native_repaint_requested = false;
+                InvalidateRect(hwnd, null(), 0);
                 return 0;
             }
-            WM_SIZING | WM_PAINT => {
+            WM_SIZING => {
+                InvalidateRect(hwnd, null(), 0);
+                return DefWindowProcA(hwnd, msg, wparam, lparam);
+            }
+            WM_PAINT => {
                 window.native_repaint_requested = true;
                 invoke_render_callback(window);
-                window.native_repaint_requested = false;
                 ValidateRect(hwnd, null());
                 return 0;
             }
