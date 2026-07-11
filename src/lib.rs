@@ -23,6 +23,7 @@ pub trait PlatformWindow {
     fn mouse_pressed(&self, button: Mouse) -> bool;
     fn mouse_released(&self, button: Mouse) -> bool;
     fn mouse_clicked(&self, button: Mouse, area: Rect) -> bool;
+    fn mouse_double_clicked(&self, button: Mouse, area: Rect) -> bool;
     fn mouse_pos(&self) -> Option<(f64, f64)>;
     fn text_input(&self) -> &[char];
     fn dropped_files(&self) -> &[std::path::PathBuf];
@@ -294,6 +295,8 @@ pub(crate) struct InputState {
     previous_mouse: [bool; MOUSE_BUTTON_COUNT],
     mouse_press_positions: [Option<(f64, f64)>; MOUSE_BUTTON_COUNT],
     mouse_release_positions: [Option<(f64, f64)>; MOUSE_BUTTON_COUNT],
+    mouse_press_was_double_click: [bool; MOUSE_BUTTON_COUNT],
+    mouse_double_clicked_this_frame: [bool; MOUSE_BUTTON_COUNT],
     pressed_keys: Vec<Key>,
     mouse_pos: Option<(f64, f64)>,
     scroll_delta: (f64, f64),
@@ -312,6 +315,8 @@ impl InputState {
             previous_mouse: [false; MOUSE_BUTTON_COUNT],
             mouse_press_positions: [None; MOUSE_BUTTON_COUNT],
             mouse_release_positions: [None; MOUSE_BUTTON_COUNT],
+            mouse_press_was_double_click: [false; MOUSE_BUTTON_COUNT],
+            mouse_double_clicked_this_frame: [false; MOUSE_BUTTON_COUNT],
             pressed_keys: Vec::new(),
             mouse_pos: None,
             scroll_delta: (0.0, 0.0),
@@ -326,6 +331,7 @@ impl InputState {
         self.previous_keys.copy_from_slice(&self.current_keys);
         self.previous_mouse.copy_from_slice(&self.current_mouse);
         self.mouse_release_positions = [None; MOUSE_BUTTON_COUNT];
+        self.mouse_double_clicked_this_frame = [false; MOUSE_BUTTON_COUNT];
         self.pressed_keys.clear();
         self.text_input.clear();
         self.dropped_files.clear();
@@ -390,6 +396,14 @@ impl InputState {
         point_in_rect(press_pos, area) && point_in_rect(release_pos, area)
     }
 
+    pub fn mouse_double_clicked(&self, button: Mouse, area: Rect) -> bool {
+        let is_double = self
+            .mouse_index(button)
+            .map(|index| self.mouse_double_clicked_this_frame[index])
+            .unwrap_or(false);
+        is_double && self.mouse_clicked(button, area)
+    }
+
     pub fn mouse_pos(&self) -> Option<(f64, f64)> {
         self.mouse_pos
     }
@@ -438,8 +452,21 @@ impl InputState {
 
         if !self.current_mouse[index] {
             self.mouse_press_positions[index] = self.mouse_pos;
+            self.mouse_press_was_double_click[index] = false;
         }
         self.current_mouse[index] = true;
+    }
+
+    pub(crate) fn set_mouse_double_down(&mut self, button: Mouse) {
+        let Some(index) = self.mouse_index(button) else {
+            return;
+        };
+
+        if !self.current_mouse[index] {
+            self.mouse_press_positions[index] = self.mouse_pos;
+        }
+        self.current_mouse[index] = true;
+        self.mouse_press_was_double_click[index] = true;
     }
 
     pub(crate) fn set_mouse_up(&mut self, button: Mouse) {
@@ -447,6 +474,10 @@ impl InputState {
             return;
         };
 
+        if self.mouse_press_was_double_click[index] {
+            self.mouse_double_clicked_this_frame[index] = true;
+            self.mouse_press_was_double_click[index] = false;
+        }
         self.current_mouse[index] = false;
         self.mouse_release_positions[index] = self.mouse_pos;
     }

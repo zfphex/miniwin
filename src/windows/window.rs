@@ -18,7 +18,7 @@ pub fn create_window(
         let title = std::ffi::CString::new(title).unwrap();
 
         let wnd_class = WNDCLASSA {
-            style: 0,
+            style: CS_DBLCLKS,
             wnd_proc: Some(wnd_proc),
             cls_extra: 0,
             wnd_extra: 0,
@@ -451,6 +451,10 @@ impl PlatformWindow for Window {
         self.input.mouse_clicked(button, area)
     }
 
+    fn mouse_double_clicked(&self, button: Mouse, area: Rect) -> bool {
+        self.input.mouse_double_clicked(button, area)
+    }
+
     fn mouse_pos(&self) -> Option<(f64, f64)> {
         self.input.mouse_pos()
     }
@@ -865,24 +869,35 @@ pub unsafe extern "system" fn wnd_proc(
                 window.input.set_key_up(Key::from_windows_vk(keycode));
                 window.input.modifiers = current_modifiers();
             }
-            WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_XBUTTONDOWN => {
-                SetCapture(hwnd);
-                window.input.mouse_pos = Some((mouse_x, mouse_y));
-                match msg {
-                    WM_LBUTTONDOWN => window.input.set_mouse_down(Mouse::Left),
-                    WM_RBUTTONDOWN => window.input.set_mouse_down(Mouse::Right),
-                    WM_MBUTTONDOWN => window.input.set_mouse_down(Mouse::Middle),
-                    WM_XBUTTONDOWN => {
-                        let button = ((wparam >> 16) & 0xffff) as usize;
-                        if button == 1 {
-                            window.input.set_mouse_down(Mouse::Back);
-                        } else if button == 2 {
-                            window.input.set_mouse_down(Mouse::Forward);
-                        }
+            WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_XBUTTONDOWN
+            | WM_LBUTTONDBLCLK | WM_RBUTTONDBLCLK | WM_MBUTTONDBLCLK | WM_XBUTTONDBLCLK => {
+                let is_double = matches!(
+                    msg,
+                    WM_LBUTTONDBLCLK | WM_RBUTTONDBLCLK | WM_MBUTTONDBLCLK | WM_XBUTTONDBLCLK
+                );
+                let mouse = match msg {
+                    WM_LBUTTONDOWN | WM_LBUTTONDBLCLK => Some(Mouse::Left),
+                    WM_RBUTTONDOWN | WM_RBUTTONDBLCLK => Some(Mouse::Right),
+                    WM_MBUTTONDOWN | WM_MBUTTONDBLCLK => Some(Mouse::Middle),
+                    WM_XBUTTONDOWN | WM_XBUTTONDBLCLK => match ((wparam >> 16) & 0xffff) as u16 {
+                        1 => Some(Mouse::Back),
+                        2 => Some(Mouse::Forward),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+
+                if let Some(mouse) = mouse {
+                    SetCapture(hwnd);
+                    window.input.mouse_pos = Some((mouse_x, mouse_y));
+                    window.input.modifiers = current_modifiers();
+
+                    if is_double {
+                        window.input.set_mouse_double_down(mouse);
+                    } else {
+                        window.input.set_mouse_down(mouse);
                     }
-                    _ => {}
                 }
-                window.input.modifiers = current_modifiers();
             }
             WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP | WM_XBUTTONUP => {
                 // Only release capture if no other mouse buttons are currently being held down.

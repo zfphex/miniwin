@@ -707,6 +707,10 @@ impl PlatformWindow for Window {
         self.input.mouse_clicked(button, area)
     }
 
+    fn mouse_double_clicked(&self, button: Mouse, area: Rect) -> bool {
+        self.input.mouse_double_clicked(button, area)
+    }
+
     fn mouse_pos(&self) -> Option<(f64, f64)> {
         self.input.mouse_pos()
     }
@@ -941,7 +945,17 @@ unsafe fn translate_event(ns_event: id, input: &mut InputState) {
                         || event_type == NSEventTypeRightMouseDown
                         || event_type == NSEventTypeOtherMouseDown
                     {
-                        input.set_mouse_down(button);
+                        // AppKit reports multi-click count using system double-click interval.
+                        let click_count_sel =
+                            sel_registerName(b"clickCount\0".as_ptr() as *const _);
+                        let click_count_func: unsafe extern "C" fn(id, SEL) -> isize =
+                            std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+                        let click_count = click_count_func(ns_event, click_count_sel);
+                        if click_count >= 2 {
+                            input.set_mouse_double_down(button);
+                        } else {
+                            input.set_mouse_down(button);
+                        }
                     } else {
                         input.set_mouse_up(button);
                     }
