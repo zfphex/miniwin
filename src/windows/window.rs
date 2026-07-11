@@ -541,60 +541,6 @@ impl PlatformWindow for Window {
         }
     }
 
-    fn present_regions(&self, regions: &[Rect]) {
-        if regions.is_empty() {
-            if self.native_repaint_requested {
-                self.present();
-            }
-            return;
-        }
-
-        if self.use_gpu {
-            self.present();
-            return;
-        }
-
-        let client_area = self.client_area();
-        if client_area.width == 0
-            || client_area.height == 0
-            || self.area.width == 0
-            || self.area.height == 0
-            || self.buffer.is_empty()
-        {
-            return;
-        }
-
-        if regions.len() == 1 && regions[0].intersection(self.area) == self.area {
-            self.present();
-            return;
-        }
-
-        for region in regions {
-            let region = region.intersection(self.area);
-            if region.width == 0 || region.height == 0 {
-                continue;
-            }
-
-            unsafe {
-                StretchDIBits(
-                    self.dc,
-                    region.x as i32,
-                    region.y as i32,
-                    region.width as i32,
-                    region.height as i32,
-                    region.x as i32,
-                    region.y as i32,
-                    region.width as i32,
-                    region.height as i32,
-                    self.buffer.as_ptr() as *const c_void,
-                    &self.bitmap,
-                    0,
-                    SRCCOPY,
-                );
-            }
-        }
-    }
-
     fn scale_factor(&self) -> f64 {
         self.display_scale as f64
     }
