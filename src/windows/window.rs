@@ -78,8 +78,8 @@ pub fn create_window(
             SetWindowPos(
                 hwnd,
                 0,
-                area.x as i32,
-                area.y as i32,
+                area.x,
+                area.y,
                 (area.width as f32 * scale) as i32,
                 (area.height as f32 * scale) as i32,
                 SWP_FRAMECHANGED,
@@ -102,9 +102,9 @@ pub fn create_window(
             buffer: if use_gpu {
                 Vec::new()
             } else {
-                vec![0u32; area.width * area.height]
+                vec![0u32; (area.width.max(0) as usize) * (area.height.max(0) as usize)]
             },
-            bitmap: BITMAPINFO::new(area.width as i32, area.height as i32),
+            bitmap: BITMAPINFO::new(area.width, area.height),
             open: true,
             input: InputState::new(),
             hglrc: null_mut(),
@@ -257,8 +257,8 @@ impl Window {
             SetWindowPos(
                 self.hwnd,
                 0,
-                area.x as i32,
-                area.y as i32,
+                area.x,
+                area.y,
                 width as i32,
                 height as i32,
                 SWP_FRAMECHANGED,
@@ -283,12 +283,12 @@ impl Window {
         Rect::from_windows(rect)
     }
 
-    pub const fn width(&self) -> usize {
-        self.area.width
+    pub fn width(&self) -> usize {
+        self.area.width.max(0) as usize
     }
 
-    pub const fn height(&self) -> usize {
-        self.area.height
+    pub fn height(&self) -> usize {
+        self.area.height.max(0) as usize
     }
 
     pub fn borderless(&mut self) {
@@ -499,7 +499,7 @@ impl PlatformWindow for Window {
         if self.buffer.len() != width * height {
             self.buffer.resize(width * height, 0);
             self.bitmap = BITMAPINFO::new(width as i32, height as i32);
-            self.area = Rect::new(0, 0, width, height);
+            self.area = Rect::new(0, 0, width as i32, height as i32);
         }
 
         &mut self.buffer

@@ -482,10 +482,10 @@ fn point_in_rect((x, y): (f64, f64), area: Rect) -> bool {
 
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Rect {
-    pub x: usize,
-    pub y: usize,
-    pub width: usize,
-    pub height: usize,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
 }
 
 impl std::ops::AddAssign for Rect {
@@ -498,7 +498,7 @@ impl std::ops::AddAssign for Rect {
 }
 
 impl Rect {
-    pub const fn new(x: usize, y: usize, width: usize, height: usize) -> Self {
+    pub const fn new(x: i32, y: i32, width: i32, height: i32) -> Self {
         Self {
             x,
             y,
@@ -506,62 +506,75 @@ impl Rect {
             height,
         }
     }
-    pub const fn x(mut self, x: usize) -> Self {
+
+    pub const fn from_xyxy(x0: i32, y0: i32, x1: i32, y1: i32) -> Self {
+        Self {
+            x: x0,
+            y: y0,
+            width: x1.saturating_sub(x0),
+            height: y1.saturating_sub(y0),
+        }
+    }
+
+    pub const fn x(mut self, x: i32) -> Self {
         self.x = x;
         self
     }
-    pub const fn y(mut self, y: usize) -> Self {
+    pub const fn y(mut self, y: i32) -> Self {
         self.y = y;
         self
     }
-    pub const fn width(mut self, width: usize) -> Self {
+    pub const fn width(mut self, width: i32) -> Self {
         self.width = width;
         self
     }
-    pub const fn height(mut self, height: usize) -> Self {
+    pub const fn height(mut self, height: i32) -> Self {
         self.height = height;
         self
     }
-    pub const fn right(&self) -> usize {
-        self.x + self.width
+    pub const fn right(&self) -> i32 {
+        self.x.saturating_add(self.width)
     }
-    pub const fn bottom(&self) -> usize {
-        self.y + self.height
+    pub const fn bottom(&self) -> i32 {
+        self.y.saturating_add(self.height)
+    }
+    pub const fn is_empty(self) -> bool {
+        self.width <= 0 || self.height <= 0
     }
     pub fn scale(self, scale: f32) -> Rect {
-        let x = (self.x as f32 * scale).round() as usize;
-        let y = (self.y as f32 * scale).round() as usize;
-        let right = (self.right() as f32 * scale).round() as usize;
-        let bottom = (self.bottom() as f32 * scale).round() as usize;
-
-        Rect::new(x, y, right.saturating_sub(x), bottom.saturating_sub(y))
+        let x = (self.x as f32 * scale).round() as i32;
+        let y = (self.y as f32 * scale).round() as i32;
+        let right = (self.right() as f32 * scale).round() as i32;
+        let bottom = (self.bottom() as f32 * scale).round() as i32;
+        Rect::from_xyxy(x, y, right, bottom)
     }
     pub const fn intersects(&self, other: Rect) -> bool {
-        self.x < other.x + other.width
-            && self.x + self.width > other.x
-            && self.y < other.y + other.height
-            && self.y + self.height > other.y
+        self.x < other.right()
+            && self.right() > other.x
+            && self.y < other.bottom()
+            && self.bottom() > other.y
     }
-    pub const fn contains(&self, x: usize, y: usize) -> bool {
-        x >= self.x && x < self.x + self.width && y >= self.y && y < self.y + self.height
+    pub const fn contains(&self, x: i32, y: i32) -> bool {
+        x >= self.x && x < self.right() && y >= self.y && y < self.bottom()
     }
-    pub fn intersection(&self, other: Rect) -> Rect {
-        let x1 = self.x.max(other.x);
-        let y1 = self.y.max(other.y);
-        let x2 = (self.x + self.width).min(other.x + other.width);
-        let y2 = (self.y + self.height).min(other.y + other.height);
-        if x2 > x1 && y2 > y1 {
-            Rect {
-                x: x1,
-                y: y1,
-                width: (x2 - x1),
-                height: (y2 - y1),
-            }
+    pub fn intersection(self, other: Rect) -> Rect {
+        let x0 = self.x.max(other.x);
+        let y0 = self.y.max(other.y);
+        let x1 = self.right().min(other.right());
+        let y1 = self.bottom().min(other.bottom());
+        if x1 > x0 && y1 > y0 {
+            Rect::from_xyxy(x0, y0, x1, y1)
         } else {
-            Rect::new(0, 0, 0, 0)
+            Rect::default()
         }
     }
-    pub const fn inner(&self, w: usize, h: usize) -> Rect {
+    pub fn clamp(self, bounds: Rect) -> Rect {
+        self.intersection(bounds)
+    }
+    pub fn clamp_to_size(self, width: i32, height: i32) -> Rect {
+        self.clamp(Rect::new(0, 0, width, height))
+    }
+    pub const fn inner(&self, w: i32, h: i32) -> Rect {
         Rect {
             x: self.x + w,
             y: self.y + h,

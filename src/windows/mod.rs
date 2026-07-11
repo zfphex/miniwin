@@ -219,8 +219,8 @@ impl Rect {
         Rect {
             x: 0,
             y: 0,
-            width: (rect.right - rect.left) as usize,
-            height: (rect.bottom - rect.top) as usize,
+            width: rect.right.saturating_sub(rect.left),
+            height: rect.bottom.saturating_sub(rect.top),
         }
     }
 }
