@@ -291,6 +291,7 @@ pub struct Modifiers {
 pub(crate) struct InputState {
     current_keys: [bool; 256],
     previous_keys: [bool; 256],
+    keys_pressed_this_frame: [bool; 256],
     current_mouse: [bool; MOUSE_BUTTON_COUNT],
     previous_mouse: [bool; MOUSE_BUTTON_COUNT],
     mouse_press_positions: [Option<(f64, f64)>; MOUSE_BUTTON_COUNT],
@@ -311,6 +312,7 @@ impl InputState {
         Self {
             current_keys: [false; 256],
             previous_keys: [false; 256],
+            keys_pressed_this_frame: [false; 256],
             current_mouse: [false; MOUSE_BUTTON_COUNT],
             previous_mouse: [false; MOUSE_BUTTON_COUNT],
             mouse_press_positions: [None; MOUSE_BUTTON_COUNT],
@@ -329,6 +331,7 @@ impl InputState {
 
     pub(crate) fn begin_frame(&mut self) {
         self.previous_keys.copy_from_slice(&self.current_keys);
+        self.keys_pressed_this_frame = [false; 256];
         self.previous_mouse.copy_from_slice(&self.current_mouse);
         self.mouse_release_positions = [None; MOUSE_BUTTON_COUNT];
         self.mouse_double_clicked_this_frame = [false; MOUSE_BUTTON_COUNT];
@@ -351,7 +354,7 @@ impl InputState {
 
     pub fn pressed(&self, key: Key) -> bool {
         self.key_index(key)
-            .map(|index| self.current_keys[index] && !self.previous_keys[index])
+            .map(|index| self.keys_pressed_this_frame[index])
             .unwrap_or(false)
     }
 
@@ -436,6 +439,7 @@ impl InputState {
         if !self.current_keys[index] {
             self.pressed_keys.push(key);
         }
+        self.keys_pressed_this_frame[index] = true;
         self.current_keys[index] = true;
     }
 

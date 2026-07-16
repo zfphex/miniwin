@@ -390,14 +390,25 @@ impl PlatformWindow for Window {
 
         unsafe {
             let mut msg = MSG::default();
-            while PeekMessageA(&mut msg, self.hwnd, 0, 0, PM_REMOVE) != 0 {
+            while PeekMessageA(&mut msg, 0, 0, 0, PM_REMOVE) != 0 {
+                if msg.message == WM_QUIT {
+                    self.open = false;
+                    break;
+                }
                 TranslateMessage(&msg);
                 DispatchMessageA(&msg);
+                if !self.open {
+                    break;
+                }
             }
         }
 
         self.render_callback = std::ptr::null_mut();
         self.render_executor = None;
+
+        if !self.open {
+            return;
+        }
 
         if !self.native_repaint_requested {
             render(self);
