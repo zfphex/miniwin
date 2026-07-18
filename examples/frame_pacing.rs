@@ -6,7 +6,7 @@
 //!   cargo run --example frame_pacing
 
 use miniwin::macos::vsync::{VsyncMode, VsyncTracker};
-use miniwin::{create_window, PlatformWindow, WindowStyle};
+use miniwin::{PlatformWindow, WindowStyle, create_window};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
@@ -33,7 +33,10 @@ impl PaceReport {
     }
 
     fn min_ms(&self) -> f64 {
-        self.samples_ms.iter().copied().fold(f64::INFINITY, f64::min)
+        self.samples_ms
+            .iter()
+            .copied()
+            .fold(f64::INFINITY, f64::min)
     }
 
     fn max_ms(&self) -> f64 {

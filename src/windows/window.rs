@@ -200,6 +200,8 @@ impl Window {
             assert!(!hglrc.is_null(), "wglCreateContextAttribsARB failed");
 
             assert!(wglMakeCurrent(self.dc, hglrc) != 0);
+            // Skip for performance
+            // assert!(wglDeleteContext(dummy_hglrc) != 0);
             self.hglrc = hglrc;
         }
     }
@@ -225,6 +227,17 @@ impl Window {
             assert!(wglMakeCurrent(self.dc, hglrc) != 0);
             self.hglrc = hglrc;
         }
+    }
+
+    pub unsafe fn destroy_wgl(&mut self) {
+        if self.hglrc.is_null() {
+            return;
+        }
+        unsafe {
+            assert!(wglMakeCurrent(null_mut(), null_mut()) != 0);
+            assert!(wglDeleteContext(self.hglrc) != 0);
+        }
+        self.hglrc = null_mut();
     }
 
     pub fn get_wgl_proc_address(&self, name: &str) -> *const c_void {
