@@ -1,4 +1,4 @@
-use miniwin::*;
+use minwin::*;
 
 fn main() {
     println!("Initializing Window...");
@@ -8,7 +8,7 @@ fn main() {
     println!("  [C] - Cycle cursor icon (Arrow -> IBeam -> PointingHand -> Crosshair)");
     println!("  [V] - Toggle cursor visibility");
     println!("  [G] - Toggle cursor grab/lock");
-    println!("  [P] - Copy 'Hello from miniwin!' to clipboard");
+    println!("  [P] - Copy 'Hello from minwin!' to clipboard");
     println!("  [O] - Read and print clipboard contents");
     println!("  [Drop Files] - Drop files onto the window to print their paths");
 
@@ -75,7 +75,7 @@ fn main() {
                     println!("Set cursor grab: {}", cursor_grabbed);
                 }
                 Key::Char('P') => {
-                    let text = "Hello from miniwin Clipboard!";
+                    let text = "Hello from minwin Clipboard!";
                     window.set_clipboard_text(text);
                     println!("Copied text to clipboard: {:?}", text);
                 }

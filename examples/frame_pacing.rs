@@ -5,8 +5,8 @@
 //!
 //!   cargo run --example frame_pacing
 
-use miniwin::macos::vsync::{VsyncMode, VsyncTracker};
-use miniwin::{PlatformWindow, WindowStyle, create_window};
+use minwin::macos::vsync::{VsyncMode, VsyncTracker};
+use minwin::{PlatformWindow, WindowStyle, create_window};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
@@ -118,7 +118,7 @@ fn main() -> ExitCode {
     println!("Opening real window for frame-pacing comparison...");
 
     let mut window = create_window(
-        "miniwin frame pacing",
+        "minwin frame pacing",
         None,
         640,
         480,

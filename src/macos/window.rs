@@ -316,6 +316,18 @@ pub fn create_window(
             nil,
         );
 
+        // Required for windows launched from a terminal/Cargo to become key and
+        // actually appear in front of other apps on macOS.
+        let ns_app = msg_send_id(
+            objc_getClass(b"NSApplication\0".as_ptr() as *const _),
+            sel_registerName(b"sharedApplication\0".as_ptr() as *const _),
+        );
+        let activate_sel =
+            sel_registerName(b"activateIgnoringOtherApps:\0".as_ptr() as *const _);
+        let activate: unsafe extern "C" fn(id, SEL, BOOL) =
+            std::mem::transmute(objc_msgSend as *const std::ffi::c_void);
+        activate(ns_app, activate_sel, YES);
+
         msg_send_id_id_void(
             ns_window,
             sel_registerName(b"makeFirstResponder:\0".as_ptr() as *const _),
