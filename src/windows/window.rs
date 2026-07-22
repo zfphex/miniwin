@@ -503,21 +503,11 @@ impl PlatformWindow for Window {
         self.input.modifiers()
     }
 
-    /// Only works for framebuffers.
-    /// For OpenGL call `window.set_swap_interval(1)` once after creation.
     fn wait_for_vsync(&self) {
-        if self.use_gpu {
-            return;
-        }
-
         unsafe { DwmFlush() };
     }
 
     fn wait_for_event(&self) {
-        if self.use_gpu {
-            return;
-        }
-
         unsafe { WaitMessage() };
     }
 
